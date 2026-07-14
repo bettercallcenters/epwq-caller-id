@@ -286,7 +286,7 @@ var VIEWBOX = {
    >>> Pega tu API key de Google (Places) abajo para activarlo. <<<
    Si se deja vacío, la app usa OpenStreetMap (gratis) automáticamente.
 ============================================================ */
-var GOOGLE_KEY = '';   // <— la key de Hector se pone aquí DESPUÉS de restringirla (Maps JS + Places, referrer bettercallcenters.github.io/*). Vacío = usa OpenStreetMap gratis.
+var GOOGLE_KEY = 'AIzaSyB-6nLKJ0zWabG8DWA7ShQNPj1903nvjqs';   // Restringida en Google Cloud: Websites (bettercallcenters.github.io/* + localhost:5178/*) + APIs (Maps JavaScript API, Places API).
 var CENTER = { epcad:{lat:31.7619,lng:-106.4850}, dona:{lat:32.3199,lng:-106.7637} };
 var googleReady=false, gAuto=null, gPlaces=null;
 function initGoogle(){
