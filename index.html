@@ -1,0 +1,584 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>EPWQ · Identificador de Llamadas</title>
+<style>
+  :root{
+    --bg:#0f172a; --panel:#ffffff; --ink:#0f172a; --muted:#64748b;
+    --brand:#0369a1; --brand2:#0ea5e9; --accent:#0891b2;
+    --ok:#16a34a; --warn:#d97706; --danger:#dc2626;
+    --line:#e2e8f0; --soft:#f1f5f9;
+    --shadow:0 1px 3px rgba(15,23,42,.08),0 8px 24px rgba(15,23,42,.06);
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Helvetica,Arial,sans-serif;
+       color:var(--ink);background:linear-gradient(180deg,#f8fafc,#eef2f7);min-height:100vh}
+  header{background:linear-gradient(90deg,var(--brand),var(--accent));color:#fff;padding:14px 20px;
+         display:flex;align-items:center;gap:14px;box-shadow:var(--shadow)}
+  header .logo{width:38px;height:38px;border-radius:10px;background:rgba(255,255,255,.18);
+       display:grid;place-items:center;font-size:20px}
+  header h1{font-size:17px;margin:0;font-weight:700;letter-spacing:.2px}
+  header .sub{font-size:12px;opacity:.9;margin-top:2px}
+  header .who{margin-left:auto;font-size:12px;opacity:.9;text-align:right}
+
+  .wrap{max-width:1120px;margin:18px auto;padding:0 16px;display:grid;
+        grid-template-columns:1.15fr .85fr;gap:16px}
+  @media (max-width:900px){.wrap{grid-template-columns:1fr}}
+  /* Reserva espacio a la derecha para el softphone flotante de RingCentral (no tapa el contenido) */
+  @media (min-width:1024px){ body{padding-right:330px} }
+
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+        overflow:hidden}
+  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
+        margin:0;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--soft);
+        display:flex;align-items:center;gap:8px}
+  .card .body{padding:16px}
+  .step{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;
+        background:var(--brand);color:#fff;font-size:12px;font-weight:700}
+
+  /* Incoming banner */
+  #incoming{margin:0 0 14px;border-radius:12px;padding:14px 16px;border:1px dashed var(--line);
+        background:var(--soft);color:var(--muted);display:flex;align-items:center;gap:14px}
+  #incoming.live{background:linear-gradient(90deg,#dcfce7,#f0fdf4);border:1px solid #86efac;color:#065f46;
+        animation:pulse 1.2s ease-in-out infinite}
+  @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(22,163,74,.35)}50%{box-shadow:0 0 0 8px rgba(22,163,74,0)}}
+  #incoming .ic{font-size:26px}
+  #incoming .num{font-size:22px;font-weight:800;letter-spacing:.5px}
+  #incoming .lbl{font-size:12px;text-transform:uppercase;letter-spacing:.6px;opacity:.8}
+  #incoming .sp{margin-left:auto;display:flex;gap:8px}
+
+  label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 5px;
+        text-transform:uppercase;letter-spacing:.4px}
+  .field{margin-bottom:14px;position:relative}
+  input[type=text],textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;
+        font-size:15px;color:var(--ink);background:#fff;outline:none;transition:border .15s,box-shadow .15s}
+  input[type=text]:focus,textarea:focus{border-color:var(--brand2);box-shadow:0 0 0 3px rgba(14,165,233,.15)}
+  textarea{resize:vertical;min-height:120px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
+
+  .row{display:flex;gap:10px}.row>*{flex:1}
+
+  .btn{appearance:none;border:1px solid transparent;border-radius:10px;padding:10px 14px;font-size:14px;
+        font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;justify-content:center;
+        transition:transform .05s,filter .15s}
+  .btn:active{transform:translateY(1px)}
+  .btn.primary{background:var(--brand);color:#fff}
+  .btn.primary:hover{filter:brightness(1.08)}
+  .btn.ghost{background:#fff;border-color:var(--line);color:var(--ink)}
+  .btn.ghost:hover{background:var(--soft)}
+  .btn.wide{width:100%}
+  .btn.sm{padding:7px 10px;font-size:13px}
+
+  /* segmented / chips */
+  .seg{display:inline-flex;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
+  .seg button{border:0;background:transparent;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:600;
+        color:var(--muted);cursor:pointer}
+  .seg button.on{background:#fff;color:var(--brand);box-shadow:var(--shadow)}
+  .chips{display:flex;flex-wrap:wrap;gap:7px}
+  .chip{border:1px solid var(--line);background:#fff;border-radius:999px;padding:6px 12px;font-size:13px;
+        cursor:pointer;color:var(--ink)}
+  .chip:hover{background:var(--soft)}
+  .chip.on{background:var(--brand);color:#fff;border-color:var(--brand)}
+
+  /* autocomplete dropdown */
+  .ac{position:absolute;left:0;right:0;top:100%;z-index:30;background:#fff;border:1px solid var(--line);
+        border-radius:10px;box-shadow:var(--shadow);margin-top:4px;max-height:260px;overflow:auto;display:none}
+  .ac.open{display:block}
+  .ac .opt{padding:10px 12px;cursor:pointer;border-bottom:1px solid var(--soft);font-size:14px}
+  .ac .opt:last-child{border-bottom:0}
+  .ac .opt:hover,.ac .opt.hi{background:var(--soft)}
+  .ac .opt .main{font-weight:600}
+  .ac .opt .sub{font-size:12px;color:var(--muted)}
+  .ac .hint{padding:8px 12px;font-size:12px;color:var(--muted)}
+
+  .msgbox{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:14px;white-space:pre-wrap;
+        font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;line-height:1.6;min-height:110px}
+  .hintline{font-size:12px;color:var(--muted);margin:8px 0 0}
+  .divider{height:1px;background:var(--line);margin:14px 0}
+
+  /* toast */
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);opacity:0;
+        background:#0f172a;color:#fff;padding:11px 18px;border-radius:10px;font-size:14px;font-weight:600;
+        box-shadow:var(--shadow);transition:opacity .2s,transform .2s;z-index:100;pointer-events:none}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+
+  .badge{font-size:11px;font-weight:700;padding:2px 8px;border-radius:999px;text-transform:uppercase;letter-spacing:.4px}
+  .badge.tx{background:#dbeafe;color:#1d4ed8}
+  .badge.nm{background:#fef3c7;color:#b45309}
+  .footnote{max-width:1180px;margin:6px auto 40px;padding:0 16px;font-size:12px;color:var(--muted)}
+  a.link{color:var(--brand);font-weight:600;text-decoration:none}
+  a.link:hover{text-decoration:underline}
+</style>
+</head>
+<body>
+<header>
+  <div class="logo">💧</div>
+  <div>
+    <h1>Identificador de Llamadas · EPWQ</h1>
+    <div class="sub">Dueño en tiempo real · EPCAD / Doña Ana · USPhonebook · Mensaje de cita automático</div>
+  </div>
+  <div class="who">Uso: Guillermo · Divine · Hector<br><span id="rcStatus">RingCentral: conecta el softphone ↘</span></div>
+</header>
+
+<div class="wrap">
+  <!-- ================= COLUMNA IZQUIERDA: FLUJO ================= -->
+  <div class="card">
+    <h2><span class="step">1</span> Datos de la llamada</h2>
+    <div class="body">
+
+      <!-- Banner de llamada entrante -->
+      <div id="incoming">
+        <div class="ic">📞</div>
+        <div>
+          <div class="lbl">En espera de llamada</div>
+          <div class="num" id="incNum">— — —</div>
+        </div>
+        <div class="sp" id="incActions" style="display:none">
+          <button class="btn ghost sm" id="incUsp">🔎 USPhonebook</button>
+        </div>
+      </div>
+
+      <!-- Condado -->
+      <div class="field">
+        <label>¿De dónde viene la llamada?</label>
+        <div class="seg" id="countySeg">
+          <button data-c="epcad" class="on">EPCAD — El Paso, TX <span class="badge tx">TX</span></button>
+          <button data-c="dona">Doña Ana — Las Cruces, NM <span class="badge nm">NM</span></button>
+        </div>
+      </div>
+
+      <!-- Teléfono -->
+      <div class="field">
+        <label>Teléfono del que llama</label>
+        <div class="row">
+          <input type="text" id="phone" placeholder="(832) 865-8324" inputmode="tel" autocomplete="off" />
+          <button class="btn ghost" id="uspBtn" style="flex:0 0 auto">🔎 USPhonebook</button>
+        </div>
+        <div class="hintline">Abre USPhonebook para ver nombre/dirección ligados a ese número.</div>
+      </div>
+
+      <!-- Dirección con autocompletar -->
+      <div class="field">
+        <label>Dirección de la casa (con sugerencias)</label>
+        <input type="text" id="addr" placeholder="Empieza a escribir: 5513 Edinburg…" autocomplete="off" />
+        <div class="ac" id="acBox"></div>
+        <div class="hintline">Escribe y elige la sugerencia correcta. Sesgado a la zona del condado seleccionado.</div>
+      </div>
+
+      <!-- Buscar dueño -->
+      <div class="field">
+        <button class="btn primary wide" id="ownerBtn">🏠 Buscar dueño &nbsp;→&nbsp; <span id="ownerBtnLbl">abrir EPCAD</span></button>
+        <div class="hintline">Copia la dirección y abre el buscador oficial. Pega con <b>⌘V / Ctrl+V</b> para ver al dueño.</div>
+      </div>
+
+      <!-- Nombre del dueño -->
+      <div class="field">
+        <label>Nombre del dueño (lo que aparece en el buscador)</label>
+        <input type="text" id="owner" placeholder="Ivan y Laura Cifuentes" autocomplete="off" />
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= COLUMNA DERECHA: CITA + MENSAJE ================= -->
+  <div style="display:flex;flex-direction:column;gap:16px">
+    <div class="card">
+      <h2><span class="step">2</span> Detalles de la cita</h2>
+      <div class="body">
+        <div class="field">
+          <label>¿Cuándo? (día y horario)</label>
+          <input type="text" id="when" placeholder="Today 4-6 Pm" value="Today " autocomplete="off" />
+          <div class="chips" style="margin-top:8px">
+            <span class="chip" data-set-when="Today ">Today</span>
+            <span class="chip" data-set-when="Tomorrow ">Tomorrow</span>
+            <span class="chip" data-add-when="2-4 Pm">2-4 Pm</span>
+            <span class="chip" data-add-when="4-6 Pm">4-6 Pm</span>
+            <span class="chip" data-add-when="6-8 Pm">6-8 Pm</span>
+          </div>
+        </div>
+
+        <div class="row">
+          <div class="field">
+            <label>Idioma</label>
+            <div class="chips" id="langChips">
+              <span class="chip on" data-lang="Espanol">Espanol</span>
+              <span class="chip" data-lang="Ingles">Ingles</span>
+            </div>
+          </div>
+          <div class="field">
+            <label>Rol</label>
+            <div class="chips" id="roleChips">
+              <span class="chip on" data-role="owner">owner</span>
+              <span class="chip" data-role="renter">renter</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2><span class="step">3</span> Mensaje de la cita (FWD)</h2>
+      <div class="body">
+        <div class="msgbox" id="msg"></div>
+        <div class="row" style="margin-top:12px">
+          <button class="btn primary" id="copyMsg">📋 Copiar mensaje</button>
+          <button class="btn ghost" id="smsMsg">💬 Prellenar SMS en RingCentral</button>
+        </div>
+        <div class="hintline">Copia y pégalo en el grupo de WhatsApp, o prellena el SMS en RingCentral (tú das “enviar”).</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="footnote">
+  Sugerencias de dirección por Google Places (o OpenStreetMap gratis si no hay API key). Búsqueda de dueño:
+  <a class="link" href="https://go.epcad.org/search" target="_blank" rel="noopener">EPCAD</a> ·
+  <a class="link" href="https://assessor.donaanacounty.org/" target="_blank" rel="noopener">Doña Ana (EagleWeb)</a> ·
+  Teléfono: <a class="link" href="https://www.usphonebook.com/" target="_blank" rel="noopener">USPhonebook</a>.
+  El softphone flotante de RingCentral aparece abajo a la derecha una vez que inicias sesión.
+</div>
+
+<div id="toast"></div>
+
+<script>
+/* ============================================================
+   ESTADO
+============================================================ */
+var state = {
+  county: 'epcad',           // 'epcad' (El Paso TX) | 'dona' (Doña Ana NM)
+  lang: 'Espanol',
+  role: 'owner',
+  addrCompact: '',           // "5513 Edinburg" para el mensaje
+};
+
+// Cajas geográficas para sesgar las sugerencias (lon1,lat1,lon2,lat2)
+var VIEWBOX = {
+  epcad: '-106.72,31.98,-106.13,31.58',   // El Paso, TX
+  dona:  '-107.45,32.75,-106.45,31.95'    // Doña Ana / Las Cruces, NM
+};
+
+/* ============================================================
+   GOOGLE PLACES (opcional) — autocompletar calidad Google Maps
+   >>> Pega tu API key de Google (Places) abajo para activarlo. <<<
+   Si se deja vacío, la app usa OpenStreetMap (gratis) automáticamente.
+============================================================ */
+var GOOGLE_KEY = '';   // <— tu API key aquí (restríngela por dominio en Google Cloud)
+var CENTER = { epcad:{lat:31.7619,lng:-106.4850}, dona:{lat:32.3199,lng:-106.7637} };
+var googleReady=false, gAuto=null, gPlaces=null;
+function initGoogle(){
+  try{
+    gAuto   = new google.maps.places.AutocompleteService();
+    gPlaces = new google.maps.places.PlacesService(document.createElement('div'));
+    googleReady = true;
+  }catch(e){ googleReady=false; }
+}
+window.__initGoogle = initGoogle;   // callback del script de Google
+(function loadGoogle(){
+  if(!GOOGLE_KEY) return;           // sin key → se queda con OpenStreetMap
+  var s=document.createElement('script');
+  s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(GOOGLE_KEY)+'&libraries=places&callback=__initGoogle';
+  s.async=true; document.head.appendChild(s);
+})();
+
+// Decide qué motor de sugerencias usar
+function runAutocomplete(q){ if(googleReady) googlePredict(q); else queryNominatim(q); }
+
+function googlePredict(q){
+  var c = CENTER[state.county];
+  gAuto.getPlacePredictions({
+    input:q,
+    componentRestrictions:{country:'us'},
+    location:new google.maps.LatLng(c.lat,c.lng),
+    radius:45000,                    // ~45km alrededor del condado
+    types:['address']
+  }, function(preds,status){
+    if(status!==google.maps.places.PlacesServiceStatus.OK || !preds){ acItems=[]; renderAC([]); return; }
+    acItems = preds.map(function(p){
+      var sf=p.structured_formatting||{};
+      return { placeId:p.place_id, isGoogle:true, main:(sf.main_text||p.description), sub:(sf.secondary_text||'') };
+    });
+    renderAC(acItems);
+  });
+}
+
+var $ = function(id){ return document.getElementById(id); };
+
+/* ============================================================
+   TOAST
+============================================================ */
+var toastTimer;
+function toast(msg){
+  var t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+}
+
+/* ============================================================
+   CONDADO (EPCAD / DOÑA ANA)
+============================================================ */
+$('countySeg').addEventListener('click', function(e){
+  var b = e.target.closest('button'); if(!b) return;
+  state.county = b.dataset.c;
+  [].forEach.call(this.querySelectorAll('button'), function(x){ x.classList.toggle('on', x===b); });
+  $('ownerBtnLbl').textContent = state.county==='epcad' ? 'abrir EPCAD' : 'abrir Doña Ana';
+  clearAC();
+});
+
+/* ============================================================
+   TELÉFONO + USPHONEBOOK
+============================================================ */
+function digits(s){ return (s||'').replace(/\D/g,'').replace(/^1(?=\d{10}$)/,''); }
+function uspUrl(s){
+  var d = digits(s);
+  if(d.length !== 10){ return null; }
+  return 'https://www.usphonebook.com/' + d.slice(0,3) + '-' + d.slice(3,6) + '-' + d.slice(6);
+}
+function openUsp(s){
+  var u = uspUrl(s);
+  if(!u){ toast('Escribe un teléfono de 10 dígitos'); return; }
+  window.open(u, '_blank', 'noopener');
+}
+$('uspBtn').addEventListener('click', function(){ openUsp($('phone').value); });
+$('incUsp').addEventListener('click', function(){ openUsp($('phone').value); });
+$('phone').addEventListener('input', buildMsg);
+
+/* ============================================================
+   AUTOCOMPLETAR DIRECCIÓN (Nominatim / OpenStreetMap)
+============================================================ */
+var acItems = [], acHi = -1, acTimer, acCtrl;
+
+function clearAC(){ $('acBox').classList.remove('open'); $('acBox').innerHTML=''; acItems=[]; acHi=-1; }
+
+function renderAC(list){
+  var box = $('acBox');
+  if(!list.length){ box.innerHTML = '<div class="hint">Sin sugerencias — puedes escribir la dirección a mano.</div>'; box.classList.add('open'); return; }
+  box.innerHTML = list.map(function(it,i){
+    return '<div class="opt" data-i="'+i+'"><div class="main">'+esc(it.main)+'</div><div class="sub">'+esc(it.sub)+'</div></div>';
+  }).join('');
+  box.classList.add('open');
+}
+function esc(s){ return (s||'').replace(/[&<>"]/g,function(c){return{'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c];}); }
+
+function compactFrom(a){
+  // "5513 Edinburg" -> número + calle
+  var num = a.house_number || '';
+  var road = a.road || a.pedestrian || a.residential || '';
+  var c = (num + ' ' + road).trim();
+  return c || null;
+}
+
+function pickAC(i){
+  var it = acItems[i]; if(!it) return;
+
+  // --- Sugerencia de Google: pedir detalle para sacar número + calle ---
+  if(it.isGoogle){
+    gPlaces.getDetails({placeId:it.placeId, fields:['address_components','formatted_address']}, function(pl){
+      var compact = it.main, full = (pl && pl.formatted_address) || (it.main+' '+it.sub);
+      if(pl && pl.address_components){
+        var num='', route='';
+        pl.address_components.forEach(function(comp){
+          if(comp.types.indexOf('street_number')>=0) num=comp.long_name;
+          if(comp.types.indexOf('route')>=0)         route=comp.long_name;
+        });
+        if(num||route) compact=(num+' '+route).trim();
+      }
+      $('addr').value = full;
+      state.addrCompact = compact;
+      clearAC(); buildMsg();
+    });
+    return;
+  }
+
+  // --- Sugerencia de OpenStreetMap ---
+  // Muestra una versión limpia en el campo; usa la compacta ("5000 Montana Avenue") para el mensaje
+  $('addr').value = it.compact ? (it.compact + (it.sub ? ', ' + it.sub : '')) : it.full;
+  state.addrCompact = it.compact || it.full;
+  clearAC(); buildMsg();
+}
+
+function queryNominatim(q){
+  if(acCtrl) acCtrl.abort();
+  acCtrl = new AbortController();
+  var base = 'https://nominatim.openstreetmap.org/search';
+  var params = 'format=jsonv2&addressdetails=1&limit=6&countrycodes=us&dedupe=1'+
+               '&viewbox='+encodeURIComponent(VIEWBOX[state.county])+'&bounded=1'+
+               '&q='+encodeURIComponent(q);
+  fetch(base+'?'+params, {headers:{'Accept':'application/json'}, signal:acCtrl.signal})
+    .then(function(r){ return r.json(); })
+    .then(function(rows){
+      if(!rows || !rows.length){
+        // reintento sin límite geográfico
+        return fetch(base+'?format=jsonv2&addressdetails=1&limit=6&countrycodes=us&q='+encodeURIComponent(q))
+          .then(function(r){return r.json();});
+      }
+      return rows;
+    })
+    .then(function(rows){
+      acItems = (rows||[]).map(function(r){
+        var a = r.address || {};
+        var compact = compactFrom(a);
+        var main = compact || (r.display_name||'').split(',').slice(0,2).join(',');
+        var sub = [a.city||a.town||a.village||a.hamlet, a.state, a.postcode].filter(Boolean).join(', ');
+        return { full: r.display_name, compact: compact, main: main, sub: sub };
+      });
+      renderAC(acItems);
+    })
+    .catch(function(err){ if(err.name!=='AbortError'){ /* silencio */ } });
+}
+
+$('addr').addEventListener('input', function(){
+  state.addrCompact = this.value;   // por si escriben a mano
+  buildMsg();
+  var q = this.value.trim();
+  clearTimeout(acTimer);
+  if(q.length < 4){ clearAC(); return; }
+  acTimer = setTimeout(function(){ runAutocomplete(q); }, 450);  // Google o Nominatim según haya key
+});
+$('addr').addEventListener('keydown', function(e){
+  if(!$('acBox').classList.contains('open')) return;
+  if(e.key==='ArrowDown'){ e.preventDefault(); acHi=Math.min(acHi+1, acItems.length-1); hiAC(); }
+  else if(e.key==='ArrowUp'){ e.preventDefault(); acHi=Math.max(acHi-1, 0); hiAC(); }
+  else if(e.key==='Enter'){ if(acHi>=0){ e.preventDefault(); pickAC(acHi); } }
+  else if(e.key==='Escape'){ clearAC(); }
+});
+function hiAC(){ [].forEach.call($('acBox').querySelectorAll('.opt'), function(o,i){ o.classList.toggle('hi', i===acHi); }); }
+$('acBox').addEventListener('click', function(e){ var o=e.target.closest('.opt'); if(o) pickAC(+o.dataset.i); });
+document.addEventListener('click', function(e){ if(!e.target.closest('.field')) clearAC(); });
+
+/* ============================================================
+   BUSCAR DUEÑO (copiar dirección + abrir portal correcto)
+============================================================ */
+var OWNER_URL = {
+  epcad: 'https://go.epcad.org/search',
+  dona:  'https://assessor.donaanacounty.org/'
+};
+$('ownerBtn').addEventListener('click', function(){
+  var addr = (state.addrCompact || $('addr').value || '').trim();
+  if(!addr){ toast('Escribe primero la dirección'); $('addr').focus(); return; }
+  copy(addr).then(function(){
+    toast('Dirección copiada — pega con ⌘V / Ctrl+V en el buscador');
+  });
+  window.open(OWNER_URL[state.county], '_blank', 'noopener');
+});
+$('owner').addEventListener('input', buildMsg);
+
+/* ============================================================
+   CHIPS: cuándo / idioma / rol
+============================================================ */
+document.addEventListener('click', function(e){
+  var c = e.target.closest('.chip'); if(!c) return;
+  if(c.dataset.setWhen!=null){ $('when').value = c.dataset.setWhen; buildMsg(); }
+  if(c.dataset.addWhen!=null){ $('when').value = ($('when').value.trim()+' '+c.dataset.addWhen).replace(/\s+/g,' ').trim()+''; buildMsg(); }
+  if(c.dataset.lang){ state.lang=c.dataset.lang; setOn('langChips',c); buildMsg(); }
+  if(c.dataset.role){ state.role=c.dataset.role; setOn('roleChips',c); buildMsg(); }
+});
+function setOn(group,el){ [].forEach.call($(group).querySelectorAll('.chip'), function(x){ x.classList.toggle('on', x===el); }); }
+$('when').addEventListener('input', buildMsg);
+
+/* ============================================================
+   MENSAJE DE LA CITA (formato exacto del equipo)
+   Ivan y Laura Cifuentes
+   5513 Edinburg
+   Today 4-6 Pm
+   Espanol/ owner
+   8328658324
+============================================================ */
+function buildMsg(){
+  var name  = $('owner').value.trim();
+  var addr  = (state.addrCompact || $('addr').value || '').trim();
+  var when  = $('when').value.trim();
+  var phone = digits($('phone').value);
+  var line4 = state.lang + '/ ' + state.role;
+  var parts = [];
+  if(name)  parts.push(name);
+  if(addr)  parts.push(addr);
+  if(when)  parts.push(when);
+  parts.push(line4);
+  if(phone) parts.push(phone);
+  $('msg').textContent = parts.join('\n');
+}
+
+/* ============================================================
+   COPIAR / SMS
+============================================================ */
+function copy(text){
+  if(navigator.clipboard && navigator.clipboard.writeText){ return navigator.clipboard.writeText(text); }
+  return new Promise(function(res){
+    var ta=document.createElement('textarea'); ta.value=text; document.body.appendChild(ta); ta.select();
+    try{ document.execCommand('copy'); }catch(e){} document.body.removeChild(ta); res();
+  });
+}
+$('copyMsg').addEventListener('click', function(){
+  copy($('msg').textContent).then(function(){ toast('Mensaje copiado ✔'); });
+});
+
+/* Prellenar SMS en el widget de RingCentral (tú das enviar) */
+$('smsMsg').addEventListener('click', function(){
+  var phone = digits($('phone').value);
+  var text = $('msg').textContent;
+  var frame = document.querySelector('#rc-widget-adapter-frame');
+  if(!frame || !frame.contentWindow){
+    toast('Inicia sesión en el softphone de RingCentral primero'); return;
+  }
+  frame.contentWindow.postMessage({
+    type:'rc-adapter-new-sms', phoneNumber: phone ? '+1'+phone : '', text:text, conversation:true
+  }, '*');
+  toast('SMS prellenado en RingCentral — revisa y envía');
+});
+
+/* ============================================================
+   RINGCENTRAL EMBEDDABLE (softphone + eventos de llamada)
+============================================================ */
+(function loadRC(){
+  var s = document.createElement('script');
+  // Para producción (más volumen) agrega tu propio clientId:
+  //   s.src = ".../adapter.js?clientId=TU_CLIENT_ID&appServer=https://platform.ringcentral.com";
+  s.src = 'https://apps.ringcentral.com/integration/ringcentral-embeddable/latest/adapter.js';
+  var first = document.getElementsByTagName('script')[0];
+  first.parentNode.insertBefore(s, first);
+})();
+
+window.addEventListener('message', function(e){
+  var d = e.data; if(!d || !d.type) return;
+
+  // Login / estado
+  if(d.type === 'rc-login-status-notify'){
+    $('rcStatus').textContent = d.loggedIn ? 'RingCentral: conectado ✔' : 'RingCentral: conecta el softphone ↘';
+  }
+
+  // Llamada entrante (sonando)
+  if(d.type === 'rc-call-ring-notify'){
+    var call = d.call || {};
+    var from = call.from || {};
+    var num = from.phoneNumber || from.extensionNumber || '';
+    onIncoming(num);
+  }
+
+  // Llamada contestada / conectada
+  if(d.type === 'rc-call-start-notify'){
+    var call2 = d.call || {};
+    if(call2.direction === 'Inbound'){
+      var f2 = call2.from || {};
+      onIncoming(f2.phoneNumber || '', true);
+    }
+  }
+});
+
+function onIncoming(num, answered){
+  var box = $('incoming');
+  box.classList.add('live');
+  $('incNum').textContent = prettyPhone(num) || 'Número oculto';
+  $('incoming').querySelector('.lbl').textContent = answered ? 'Llamada en curso' : 'Llamada entrante';
+  $('incActions').style.display = num ? 'flex' : 'none';
+  if(num){ $('phone').value = prettyPhone(num); buildMsg(); }
+}
+function prettyPhone(s){
+  var d = digits(s);
+  if(d.length!==10) return s || '';
+  return '('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6);
+}
+
+/* Inicial */
+buildMsg();
+</script>
+</body>
+</html>
