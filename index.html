@@ -166,8 +166,11 @@
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
           <button class="btn primary sm" id="trBtn">🎧 Iniciar transcript</button>
           <span class="badge" style="background:#fef3c7;color:#b45309">experimento</span>
-          <span class="hintline" id="trStatus" style="margin:0;flex:1;min-width:160px">Al iniciar: <b>permite el micrófono</b> y <b>comparte el audio de esta pestaña</b>. Separa Agente/Cliente y detecta la dirección.</span>
+          <label style="font-size:12px;color:var(--muted);white-space:nowrap">Tu nombre:</label>
+          <input type="text" id="agentName" placeholder="Héctor" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px" />
+          <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Borrar</button>
         </div>
+        <div class="hintline" id="trStatus" style="margin:0 0 8px">Al iniciar: <b>permite el micrófono</b> y <b>comparte el audio de esta pestaña</b>. Separa Agente/Cliente y detecta la dirección.</div>
         <div id="trSuggest" style="display:none;margin-bottom:8px"></div>
         <div id="trHUD" style="height:240px;min-height:120px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;font-size:15px;line-height:1.6"></div>
         <div class="hintline" style="margin-top:4px">Puedes <b>subir/bajar</b> para revisar la conversación, y jalar la esquina ↘ para hacerlo más grande.</div>
@@ -1046,6 +1049,19 @@ function trStop(){
    en 2 canales → Deepgram separa quién habla, cada palabra.
 ============================================================ */
 var dgWS=null, dgCtx=null, dgProc=null, dgMicStream=null, dgTabStream=null, dgRunning=false;
+var dgEnergy=[0,0], dgWarnTimer=null;
+
+// Nombre del agente (Héctor / Guillermo / Divine) — se guarda en este navegador
+var AGENT_NAME_KEY='epwq_agent_name';
+$('agentName').value = localStorage.getItem(AGENT_NAME_KEY) || '';
+$('agentName').addEventListener('input', function(){ localStorage.setItem(AGENT_NAME_KEY, this.value.trim()); });
+function agentLabel(){ return ($('agentName').value||'').trim() || 'Agente'; }
+
+$('trClear').addEventListener('click', function(){
+  var el=$('trHUD'); el.innerHTML=''; el.dataset.full=''; el.dataset.last='';
+  $('trSuggest').style.display='none';
+  toast('Transcript borrado');
+});
 
 function clamp16(f){ var s=Math.max(-1,Math.min(1,f)); return s<0 ? s*0x8000 : s*0x7FFF; }
 
@@ -1096,17 +1112,33 @@ async function dgStart(){
       dgAppend(ch, text);
     };
 
+    dgEnergy=[0,0];
     dgProc.onaudioprocess = function(e){
-      if(!dgWS || dgWS.readyState!==1) return;
       var l=e.inputBuffer.getChannelData(0), r=e.inputBuffer.getChannelData(1);
+      for(var i=0;i<l.length;i+=8){ dgEnergy[0]+=Math.abs(l[i]); dgEnergy[1]+=Math.abs(r[i]); }   // mide volumen de cada canal
+      if(!dgWS || dgWS.readyState!==1) return;
       var pcm=new Int16Array(l.length*2);
-      for(var i=0;i<l.length;i++){ pcm[i*2]=clamp16(l[i]); pcm[i*2+1]=clamp16(r[i]); }
+      for(var i2=0;i2<l.length;i2++){ pcm[i2*2]=clamp16(l[i2]); pcm[i2*2+1]=clamp16(r[i2]); }
       dgWS.send(pcm.buffer);
     };
 
     dgRunning=true; trLastAddr='';
     $('trHUD').innerHTML=''; $('trHUD').dataset.full='';
     $('trBtn').textContent='⏹ Detener transcript'; $('trBtn').disabled=false;
+    trSetStatus('🎧 Escuchando… (Agente + Cliente en vivo)');
+
+    // A los ~7s: si el canal del Cliente sigue casi mudo comparado al mic, avisa qué revisar
+    clearTimeout(dgWarnTimer);
+    dgWarnTimer = setTimeout(function(){
+      if(!dgRunning) return;
+      if(dgEnergy[1] < dgEnergy[0]*0.05){
+        trSetStatus('⚠️ No estoy captando el audio de la <b>llamada</b> (canal Cliente). '
+          + 'Detén y vuelve a iniciar, y marca <b>"Compartir audio de la pestaña"</b>. '
+          + '<button id="trRetryShare" class="btn ghost sm" style="margin-left:6px">🔁 Reintentar</button>');
+        var rb=document.getElementById('trRetryShare');
+        if(rb) rb.onclick=function(){ dgStop(); dgStart(); };
+      }
+    }, 7000);
   }catch(err){
     toast('No se pudo iniciar el transcript');
     trSetStatus('Error: ' + (err && err.message || err));
@@ -1120,7 +1152,8 @@ function dgAppend(ch, text){
   var cliente = (ch===1);
   var line=document.createElement('div');
   line.style.margin='3px 0';
-  line.innerHTML='<b style="color:'+(cliente?'#86efac':'#93c5fd')+'">'+(cliente?'🗣️ Cliente':'🧑‍💼 Agente')+':</b> '+esc(text);
+  var label = cliente ? '🗣️ Cliente' : ('🧑‍💼 '+agentLabel());
+  line.innerHTML='<b style="color:'+(cliente?'#86efac':'#93c5fd')+'">'+esc(label)+':</b> '+esc(text);
   el.appendChild(line);
   el.dataset.full=((el.dataset.full||'')+' '+text).slice(-8000);
   if(atBottom) el.scrollTop=el.scrollHeight;
@@ -1129,6 +1162,7 @@ function dgAppend(ch, text){
 
 function dgStop(){
   dgRunning=false;
+  clearTimeout(dgWarnTimer);
   try{ if(dgWS){ if(dgWS.readyState===1) dgWS.send(JSON.stringify({type:'CloseStream'})); dgWS.close(); } }catch(e){}
   try{ if(dgProc){ dgProc.disconnect(); dgProc.onaudioprocess=null; } }catch(e){}
   try{ if(dgCtx && dgCtx.state!=='closed') dgCtx.close(); }catch(e){}
