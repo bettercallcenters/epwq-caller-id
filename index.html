@@ -1058,7 +1058,8 @@ window.addEventListener('message', function(e){
     if(from.phoneNumber || from.extensionNumber || from.name) window.__lastFrom = from;
     onIncoming(from.phoneNumber || from.extensionNumber || '', st === 'answered', from);
     reportStatus(st === 'answered' ? 'oncall' : 'ringing');   // HUD de equipo
-    if(st === 'answered'){ callIsActive = true; if(dgArmed) dgConnect(); }   // AUTO-transcript si está armado
+    if(st === 'answered') callIsActive = true;
+    if(dgArmed) dgConnect();   // AUTO-transcript: arranca en el timbre o al contestar, lo que llegue primero
   }
 
   // Llamada terminada / colgada / rechazada
@@ -1390,7 +1391,7 @@ function trStop(){
    en 2 canales → Deepgram separa quién habla, cada palabra.
 ============================================================ */
 var dgWS=null, dgCtx=null, dgProc=null, dgMicStream=null, dgTabStream=null;
-var dgArmed=false, dgConnected=false, callIsActive=false;
+var dgArmed=false, dgConnected=false, callIsActive=false, dgSessionActive=false;
 var dgLevel=[0,0], dgMeterTimer=null, dgClientBuf='';
 
 // Nombre del agente (Héctor / Guillermo / Divine) — se guarda en este navegador
@@ -1458,14 +1459,20 @@ async function dgArm(){
 async function dgConnect(){
   if(!dgArmed || dgConnected || !dgCtx) return;
   dgConnected=true;
+  trSetStatus('⏳ Connecting Deepgram…');
   try{
     var kd = await fetch(DEEPGRAM_KEY_URL).then(function(r){ return r.json(); });
-    if(!kd || !kd.key) throw new Error('key');
+    if(!kd || !kd.key) throw new Error('no key from server');
     var qs = 'model=nova-3&language=multi&endpointing=100&multichannel=true&channels=2&sample_rate=16000&encoding=linear16&punctuate=true&smart_format=true&numerals=true&interim_results=false';
     dgWS = new WebSocket('wss://api.deepgram.com/v1/listen?'+qs, ['token', kd.key]);
     dgWS.binaryType='arraybuffer';
-    dgWS.onopen  = function(){ trSetStatus('🎧 Listening… (Agent + Client live)'); };
-    dgWS.onerror = function(){ trSetStatus('⚠️ Deepgram connection error'); };
+    dgWS.onopen  = function(){ try{console.log('DG open');}catch(_){} trSetStatus('🎧 Listening… (Agent + Client live)'); };
+    dgWS.onerror = function(){ try{console.log('DG ws error');}catch(_){} trSetStatus('⚠️ Deepgram connection error'); };
+    dgWS.onclose = function(ev){
+      try{console.log('DG close', ev&&ev.code, ev&&ev.reason);}catch(_){}
+      dgConnected=false; dgWS=null;   // permite que el auto-arranque por voz reintente
+      if(dgArmed && ev && ev.code && ev.code!==1000 && ev.code!==1005){ trSetStatus('⚠️ Deepgram closed ('+ev.code+') '+(ev.reason||'')); }
+    };
     dgWS.onmessage = function(m){
       var d; try{ d=JSON.parse(m.data); }catch(e){ return; }
       if(!d.channel || !d.channel.alternatives) return;
@@ -1474,14 +1481,14 @@ async function dgConnect(){
       var ch = (d.channel_index && d.channel_index[0]) || 0;
       dgAppend(ch, text);
     };
-    trLastAddr=''; dgClientBuf='';
-    $('trHUD').innerHTML=''; $('trHUD').dataset.full='';
-  }catch(e){ dgConnected=false; trSetStatus('⚠️ Could not connect Deepgram'); }
+    // Solo limpia en llamada NUEVA (sesión nueva); en una reconexión a media llamada NO borra lo ya transcrito
+    if(!dgSessionActive){ dgSessionActive=true; trLastAddr=''; dgClientBuf=''; $('trHUD').innerHTML=''; $('trHUD').dataset.full=''; }
+  }catch(e){ dgConnected=false; try{console.log('DG connect fail', e&&e.message);}catch(_){} trSetStatus('⚠️ Could not connect Deepgram: '+(e&&e.message||e)); }
 }
 
 // DISCONNECT (automático al terminar la llamada): cierra Deepgram y limpia, PERO deja armado (sin re-compartir)
 function dgDisconnect(){
-  dgConnected=false;
+  dgConnected=false; dgSessionActive=false;   // fin limpio → la próxima llamada empieza transcript nuevo
   try{ if(dgWS){ if(dgWS.readyState===1) dgWS.send(JSON.stringify({type:'CloseStream'})); dgWS.close(); } }catch(e){}
   dgWS=null;
   var sg=document.getElementById('addrSuggest'); if(sg) sg.style.display='none';
@@ -1504,13 +1511,29 @@ function dgDisarm(){
 }
 
 // Medidor de micrófono / llamada (para ver que sí capta el audio)
+var dgVoiceTicks=0, dgSilenceTicks=0;
 function startMeters(){
   var m=document.getElementById('dgMeters'); if(m) m.style.display='flex';
   clearInterval(dgMeterTimer);
+  dgVoiceTicks=0; dgSilenceTicks=0;
   dgMeterTimer=setInterval(function(){
     var a=document.getElementById('meterMic'), b=document.getElementById('meterCall');
     if(a) a.style.width=Math.min(100, dgLevel[0]*160)+'%';
     if(b) b.style.width=Math.min(100, dgLevel[1]*160)+'%';
+    // AUTO-ARRANQUE: si hay voz del CLIENTE (canal pestaña, solo suena en llamada real) y está armado → conecta,
+    // aunque RingCentral no mande el evento de "contestada".
+    var callSound = dgLevel[1] > 0.045;                 // voz del CLIENTE (pestaña) — solo suena en llamada real
+    var micTalk   = dgLevel[0] > 0.10;                  // o el AGENTE hablando (respaldo si la pestaña no trae audio)
+    var anySound  = dgLevel[0] > 0.05 || dgLevel[1] > 0.03;
+    if(dgArmed && !dgConnected){
+      if(callSound || micTalk){ dgVoiceTicks++; if(dgVoiceTicks>=2){ dgVoiceTicks=0; dgConnect(); } }
+      else dgVoiceTicks=0;
+    }
+    // AUTO-CORTE: si ya está transcribiendo y hay ~30s de silencio total (por si no llega el evento de fin) → guarda y corta.
+    if(dgArmed && dgConnected){
+      if(anySound) dgSilenceTicks=0; else dgSilenceTicks++;
+      if(dgSilenceTicks > 250){ dgSilenceTicks=0; dgDisconnect(); }   // 120ms * 250 ≈ 30s
+    }
   }, 120);
 }
 function stopMeters(){ clearInterval(dgMeterTimer); dgMeterTimer=null; var m=document.getElementById('dgMeters'); if(m) m.style.display='none'; }
