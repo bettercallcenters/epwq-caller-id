@@ -449,11 +449,15 @@ window.__initGoogle = initGoogle;   // callback del script de Google
 // Decide qué motor de sugerencias usar
 function runAutocomplete(q){ if(googleReady) googlePredict(q); else queryNominatim(q); }
 
+/* RESTRICCIÓN DURA al área de servicio (El Paso + Doña Ana juntos): Google ya NO puede sugerir
+   Arlington/Dallas etc. — solo direcciones dentro de esta caja. El sesgo sigue siendo el condado elegido. */
+var SERVICE_BOUNDS = { west:-107.45, north:32.75, east:-106.13, south:31.58 };
 function googlePredict(q){
   var c = CENTER[state.county];
   gAuto.getPlacePredictions({
     input:q,
     componentRestrictions:{country:'us'},
+    locationRestriction: SERVICE_BOUNDS,   // SOLO dentro del área (no Arlington/Dallas)
     location:new google.maps.LatLng(c.lat,c.lng),
     radius:45000,                    // ~45km alrededor del condado
     types:['address']
@@ -1538,6 +1542,7 @@ function trPredictReal(addr){
   var token = addr;
   gAuto.getPlacePredictions({
     input: addr, componentRestrictions:{country:'us'},
+    locationRestriction: SERVICE_BOUNDS,   // solo el área de servicio: calles que SUENAN parecido pero de AQUÍ
     location:new google.maps.LatLng(c.lat,c.lng), radius:60000, types:['address']
   }, function(preds, status){
     if(!list || token!==trSuggestAddr) return;   // llegó otra detección → ignora
@@ -1593,6 +1598,7 @@ function trResolve(addr){
     var c = CENTER[state.county] || CENTER.epcad;
     gAuto.getPlacePredictions({
       input: addr, componentRestrictions:{country:'us'},
+      locationRestriction: SERVICE_BOUNDS,   // solo el área de servicio
       location:new google.maps.LatLng(c.lat,c.lng), radius:60000, types:['address']
     }, function(preds, status){
       if(status!==google.maps.places.PlacesServiceStatus.OK || !preds || !preds.length) return;
