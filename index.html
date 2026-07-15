@@ -1386,6 +1386,8 @@ function onIncoming(num, answered, from){
 }
 function callEnded(){
   alertStop();
+  callIsActive = false;                                              // la llamada terminó
+  try{ if(dgConnected) dgDisconnect(); }catch(e){}                   // apaga el transcript SIEMPRE al terminar (todos los caminos)
   lastLookedUp='';   // la próxima llamada (aunque sea el mismo número) vuelve a buscar
   window.__rcCallId = null;
   window.__callActive = false;   // libera el guard del timer de "Test alert" (el reset se decide por identidad de llamada)
@@ -1838,8 +1840,10 @@ function startMeters(){
     var a=document.getElementById('meterMic'), b=document.getElementById('meterCall');
     if(a) a.style.width=Math.min(100, dgLevel[0]*160)+'%';
     if(b) b.style.width=Math.min(100, dgLevel[1]*160)+'%';
-    // El transcript arranca SOLO al CONTESTAR la llamada (evento de RingCentral). Aquí NO se arranca por voz
-    // (antes el micrófono del agente lo prendía sin llamada). Solo se auto-corta tras silencio largo.
+    // GARANTÍA DURA: el transcript NUNCA puede estar prendido si no hay una llamada CONTESTADA activa.
+    // (Si la llamada terminó pero por algún camino no se apagó, aquí se corta de inmediato.)
+    if(dgArmed && !callIsActive && (dgConnected || dgWS)){ dgDisconnect(); }
+    // El transcript arranca SOLO al CONTESTAR la llamada (evento de RingCentral). Aquí NO se arranca por voz.
     var anySound  = dgLevel[0] > 0.05 || dgLevel[1] > 0.03;
     if(dgArmed && dgConnected){
       if(anySound) dgSilenceTicks=0; else dgSilenceTicks++;
