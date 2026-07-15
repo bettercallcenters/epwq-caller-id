@@ -260,6 +260,19 @@
       <div id="houseMap"></div>
     </div>
   </div>
+
+  <!-- ===== TRANSCRIPT EN VIVO (experimento, Whisper gratis) ===== -->
+  <div class="card" id="trCard" style="grid-column:1/-1">
+    <h2>🎧 Transcript en vivo <span style="text-transform:none;font-weight:600;color:var(--warn);letter-spacing:0">· experimento (Whisper gratis)</span></h2>
+    <div class="body">
+      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
+        <button class="btn primary" id="trBtn">🎧 Iniciar transcript</button>
+        <span class="hintline" id="trStatus" style="margin:0;flex:1;min-width:220px">Al iniciar, elige <b>compartir esta pestaña</b> y marca <b>“Compartir audio de la pestaña”</b>. La app detecta la dirección hablada y la rutea sola a EPCAD/Doña Ana.</span>
+      </div>
+      <div id="trHUD" style="min-height:90px;max-height:240px;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:12px;padding:14px;font-size:15px;line-height:1.6"></div>
+      <div class="hintline">Experimento: la primera vez baja el modelo de voz (~1 min). Va con unos segundos de retraso y la precisión con español/inglés + ruido es regular.</div>
+    </div>
+  </div>
 </div>
 
 <div class="footnote">
@@ -817,6 +830,118 @@ function prettyPhone(s){
   var d = digits(s);
   if(d.length!==10) return s || '';
   return '('+d.slice(0,3)+') '+d.slice(3,6)+'-'+d.slice(6);
+}
+
+/* ============================================================
+   TRANSCRIPT EN VIVO (experimento) — Whisper gratis en el navegador
+   Capta el audio de la pestaña (getDisplayMedia) + transcribe on-device
+   (transformers.js). Detecta la dirección hablada → la llena y la rutea.
+============================================================ */
+var transcriber=null, trStream=null, trCtx=null, trNode=null, trSink=null, trBuf=[], trRunning=false, trBusy=false, trLastAddr='';
+var TR_SR=16000, TR_CHUNK=TR_SR*5;   // procesa cada ~5 seg
+
+function trSetStatus(t){ $('trStatus').innerHTML = t; }
+$('trBtn').addEventListener('click', function(){ trRunning ? trStop() : trStart(); });
+
+async function trStart(){
+  $('trBtn').disabled=true;
+  try{
+    trStream = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+    if(!trStream.getAudioTracks().length){ toast('Marca “Compartir audio de la pestaña”'); return trStop(); }
+    trStream.getVideoTracks().forEach(function(t){ t.stop(); });
+    trStream.getAudioTracks()[0].onended = function(){ trStop(); };
+
+    if(!transcriber){
+      trSetStatus('⏳ Descargando el modelo de voz (una sola vez, ~1 min)…');
+      var mod = await import('https://cdn.jsdelivr.net/npm/@xenova/transformers@2.17.2/+esm');
+      mod.env.allowLocalModels=false;
+      transcriber = await mod.pipeline('automatic-speech-recognition','Xenova/whisper-tiny');  // tiny = rápido; base = más preciso pero lento
+    }
+
+    trCtx = new (window.AudioContext||window.webkitAudioContext)({ sampleRate: TR_SR });
+    if(trCtx.state==='suspended') await trCtx.resume();
+    var src = trCtx.createMediaStreamSource(trStream);
+    trNode = trCtx.createScriptProcessor(4096,1,1);
+    trSink = trCtx.createGain(); trSink.gain.value=0;    // gain 0 = sin eco
+    trBuf=[];
+    trNode.onaudioprocess = function(e){
+      if(!trRunning) return;
+      trBuf.push(new Float32Array(e.inputBuffer.getChannelData(0)));
+      var total=0; for(var i=0;i<trBuf.length;i++) total+=trBuf[i].length;
+      if(total>=TR_CHUNK && !trBusy) trFlush();
+    };
+    src.connect(trNode); trNode.connect(trSink); trSink.connect(trCtx.destination);
+
+    trRunning=true; trLastAddr='';
+    $('trBtn').textContent='⏹ Detener transcript'; $('trBtn').disabled=false;
+    trSetStatus('🎧 Escuchando la llamada…');
+    $('trHUD').dataset.full='';
+  }catch(err){
+    toast('No se pudo iniciar el transcript');
+    trSetStatus('Error: ' + (err && err.message || err));
+    trStop();
+  }
+}
+
+async function trFlush(){
+  trBusy=true;
+  var merged = trMerge(trBuf); trBuf=[];
+  try{
+    var out = await transcriber(merged, { language:'spanish', task:'transcribe' });
+    var text = (out && out.text || '').trim();
+    if(text && !/^[\s.,]*$/.test(text)) trAppend(text);
+  }catch(e){}
+  trBusy=false;
+}
+function trMerge(arrs){ var n=0,i; for(i=0;i<arrs.length;i++) n+=arrs[i].length; var o=new Float32Array(n),k=0; for(i=0;i<arrs.length;i++){ o.set(arrs[i],k); k+=arrs[i].length; } return o; }
+
+function trAppend(text){
+  var full = (($('trHUD').dataset.full||'') + ' ' + text).replace(/\s+/g,' ').trim();
+  $('trHUD').dataset.full = full.slice(-2000);
+  $('trHUD').textContent = $('trHUD').dataset.full;
+  $('trHUD').scrollTop = $('trHUD').scrollHeight;
+  trDetectAddress($('trHUD').dataset.full);
+}
+
+var TR_ADDR_RE=/\b(\d{2,6})\s+([A-Za-z0-9.'’-]+(?:\s+[A-Za-z0-9.'’-]+){0,3})\s+(street|st|avenue|ave|drive|dr|road|rd|boulevard|blvd|lane|ln|circle|cir|court|ct|place|pl|way|highway|hwy|parkway|pkwy|calle|avenida|camino)\b/i;
+function trDetectAddress(full){
+  var m = full.match(TR_ADDR_RE); if(!m) return;
+  var addr = (m[1]+' '+m[2]+' '+m[3]).replace(/\s+/g,' ').trim();
+  if(addr.toLowerCase()===trLastAddr.toLowerCase()) return;
+  trLastAddr=addr;
+  $('addr').value=addr; state.addrCompact=addr; buildMsg();
+  toast('📍 Dirección detectada: '+addr);
+  trGeocode(addr);
+}
+// Resuelve la dirección hablada usando Places (autorizado en la key) — NO Geocoding API
+function trGeocode(addr){
+  if(!(window.google && window.google.maps && google.maps.places && gAuto && gPlaces)) return;
+  try{
+    var c = CENTER[state.county] || CENTER.epcad;
+    gAuto.getPlacePredictions({
+      input: addr, componentRestrictions:{country:'us'},
+      location:new google.maps.LatLng(c.lat,c.lng), radius:60000, types:['address']
+    }, function(preds, status){
+      if(status!==google.maps.places.PlacesServiceStatus.OK || !preds || !preds.length) return;
+      gPlaces.getDetails({ placeId: preds[0].place_id, fields:['geometry','address_components','formatted_address'] }, function(pl){
+        if(!pl) return;
+        var loc = pl.geometry && pl.geometry.location; if(loc) setLatLng(loc.lat(), loc.lng());
+        var st=''; (pl.address_components||[]).forEach(function(cc){ if(cc.types.indexOf('administrative_area_level_1')>=0) st=cc.short_name; });
+        autoRoute(st);
+      });
+    });
+  }catch(e){}
+}
+
+function trStop(){
+  trRunning=false;
+  try{ if(trNode){ trNode.disconnect(); trNode.onaudioprocess=null; } }catch(e){}
+  try{ if(trSink) trSink.disconnect(); }catch(e){}
+  try{ if(trCtx && trCtx.state!=='closed') trCtx.close(); }catch(e){}
+  try{ if(trStream) trStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
+  trNode=trSink=trCtx=trStream=null; trBuf=[];
+  $('trBtn').textContent='🎧 Iniciar transcript'; $('trBtn').disabled=false;
+  trSetStatus('Detenido. Comparte el audio de la pestaña para empezar.');
 }
 
 /* Inicial */
