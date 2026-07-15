@@ -1167,7 +1167,7 @@ $('muteBtn').addEventListener('click', function(){
 // Botón: probar la alerta (simula una llamada 5 seg)
 $('testAlert').addEventListener('click', function(){
   onIncoming('5756427634', false, {name:'Edward Frausto'});   // demo: número de Las Cruces + nombre
-  setTimeout(callEnded, 5000);
+  setTimeout(function(){ if(!window.__callActive) callEnded(); }, 5000);   // no borra una llamada real que llegó dentro de los 5s
 });
 
 // Extrae número/nombre probando TODAS las formas en que RingCentral los manda (varía por versión/evento)
@@ -1238,7 +1238,6 @@ window.addEventListener('message', function(e){
     var st = rcState(d.type, call);
     if(st === 'ended'){ endCall(id); return; }
     if(st === 'other') return;                                   // estado ambiguo → no dispares nada (evita falso timbre)
-    if(!window.__callActive){ window.__callActive = true; resetForNewCall(); }   // 1er evento de una llamada NUEVA → todo a default
     var ex = extractCallFrom(call);
     var prev = window.__lastFrom || {};
     var from = {
@@ -1248,6 +1247,11 @@ window.addEventListener('message', function(e){
     };
     if(from.phoneNumber || from.extensionNumber || from.name) window.__lastFrom = from;
     if(id) window.__rcCallId = id;                              // para el botón Contestar/Colgar
+    // LLAMADA NUEVA → reset UNA vez. Identidad = id de sesión (o número). Robusto aunque RingCentral no mande el
+    // "colgado": una llamada distinta trae otra identidad → resetea (también en rellamada del mismo número, otro id).
+    var callKey = id || from.phoneNumber || from.extensionNumber || '';
+    if(callKey && callKey !== window.__resetCallKey){ window.__resetCallKey = callKey; resetForNewCall(); }
+    window.__callActive = true;                                 // solo para que el timer de "Test alert" no borre una llamada real
     onIncoming(from.phoneNumber || from.extensionNumber || '', st === 'answered', from);
     reportStatus(st === 'answered' ? 'oncall' : 'ringing');   // HUD de equipo
     if(st === 'answered') callIsActive = true;
@@ -1385,7 +1389,7 @@ function callEnded(){
   alertStop();
   lastLookedUp='';   // la próxima llamada (aunque sea el mismo número) vuelve a buscar
   window.__rcCallId = null;
-  window.__callActive = false;   // la próxima llamada cuenta como NUEVA → reinicia el formulario
+  window.__callActive = false;   // libera el guard del timer de "Test alert" (el reset se decide por identidad de llamada)
   var box = $('incoming'); box.classList.remove('live');
   box.querySelector('.lbl').textContent = 'Waiting for call';
   $('incNum').textContent = '— — —';
