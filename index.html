@@ -291,8 +291,8 @@
           <label>When? · Day (calendar)</label>
           <input type="date" id="apptDate" style="width:100%" />
           <div class="chips" style="margin-top:8px">
-            <span class="chip on" data-day="0">Today</span>
-            <span class="chip" data-day="1">Tomorrow</span>
+            <span class="chip" data-day="0">Today</span>
+            <span class="chip on" data-day="1">Tomorrow</span>
           </div>
         </div>
         <div class="field">
@@ -1601,7 +1601,7 @@ $('timeMode').addEventListener('click', function(e){
   buildMsg();
 });
 
-$('apptDate').value = ymd(new Date());   // default: hoy (día de la llamada)
+$('apptDate').value = ymd(dateOff(1));   // default: MAÑANA (cita típica al día siguiente)
 fillTimes(); updateDayChips();
 $('apptDate').addEventListener('change', function(){ updateDayChips(); buildMsg(); });
 $('timeFrom').addEventListener('change', buildMsg);
