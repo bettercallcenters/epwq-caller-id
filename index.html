@@ -125,6 +125,29 @@
   .mapTitle{font-size:13px;font-weight:700;color:var(--muted);margin:0 0 6px}
   .leaflet-container{border-radius:12px;font:inherit}
   .pin{filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))}
+
+  /* ===== Compact / phone view ===== */
+  @media (max-width:820px){
+    body{padding-right:0 !important}        /* el softphone flota; no reservar en pantalla angosta */
+    .wrap{grid-template-columns:1fr;margin:10px auto;padding:0 10px;gap:12px}
+    header{padding:10px 14px}
+    header h1{font-size:15px}
+    header .sub{display:none}
+    header .who{font-size:11px}
+    .card .body{padding:12px}
+    .card h2{padding:10px 12px;font-size:12px}
+    .field{margin-bottom:12px}
+    .mapBox{height:260px}
+    #trHUD{height:190px}
+    /* inputs a 16px evita que el iPhone haga zoom al enfocar */
+    input[type=text],textarea,select.sel,input[type=date]{font-size:16px}
+  }
+  @media (max-width:460px){
+    .mapsGrid{gap:10px}
+    .mapBox{height:220px}
+    .btn{padding:9px 11px}
+    .seg button{padding:7px 9px;font-size:12px}
+  }
 </style>
 </head>
 <body>
@@ -794,6 +817,37 @@ function extractCallFrom(c){
 }
 
 var RC_CALL_EVENTS = ['rc-call-ring-notify','rc-call-start-notify','rc-active-call-notify','rc-telephony-session-notify'];
+var RC_ENDED_RE = /nocall|no call|disconnect|finished|voicemail|missed|reject|terminat|ended|hangup|hang up|no answer|busy|declin/i;
+var rcEndedIds = {};   // IDs de llamadas ya terminadas → ignorar eventos tardíos
+
+function rcCallOf(d){
+  if(!d) return null;
+  if(d.call) return d.call;
+  if(d.calls && d.calls.length) return d.calls.filter(function(c){ return c && c.direction!=='Outbound'; })[0] || d.calls[0];
+  if(d.telephonySession) return d.telephonySession;
+  if(d.session) return d.session;
+  return null;
+}
+function rcCallId(c){ return (c && (c.id || c.sessionId || c.telephonySessionId || c.partyId)) || ''; }
+function rcStatusOf(c){
+  if(!c) return '';
+  return c.telephonyStatus || c.status ||
+    (c.parties && c.parties[0] && c.parties[0].status && (c.parties[0].status.code || c.parties[0].status)) || '';
+}
+function rcState(type, c){
+  var ts = rcStatusOf(c);
+  if(type==='rc-call-end-notify' || RC_ENDED_RE.test(ts)) return 'ended';
+  if(type==='rc-call-ring-notify' || /ringing|proceeding|setup|incoming/i.test(ts)) return 'ringing';
+  if(type==='rc-call-start-notify' || /connect|answer|hold|inprogress|in progress|active|established/i.test(ts)) return 'answered';
+  return 'other';
+}
+// Termina la llamada: limpia el banner, calla la alerta y DETIENE el transcript (no puede seguir)
+function endCall(id){
+  if(id) rcEndedIds[id]=1;
+  window.__lastFrom = null;
+  callEnded();
+  stopTranscriptOnCallEnd();
+}
 
 window.addEventListener('message', function(e){
   var d = e.data; if(!d || !d.type) return;
@@ -803,18 +857,16 @@ window.addEventListener('message', function(e){
     $('rcStatus').textContent = d.loggedIn ? 'RingCentral: connected ✔' : 'RingCentral: sign in to the softphone ↘';
   }
 
-  // Llamada entrante / contestada / actualizada — escucha varios eventos por si uno no trae los datos
+  // Eventos de llamada — con máquina de estado robusta (evita "INCOMING CALL" fantasma tras colgar)
   if(RC_CALL_EVENTS.indexOf(d.type) >= 0){
     try{ console.log('RC event', d.type, d); }catch(_){}
-    var call = d.call;
-    if(!call && d.calls && d.calls.length){
-      call = d.calls.filter(function(c){ return c.direction!=='Outbound'; })[0] || d.calls[0];
-    }
-    if(!call) return;
-    if(call.direction && call.direction !== 'Inbound') return;   // ignora llamadas salientes
-
-    var answered = (d.type==='rc-call-start-notify') ||
-                    /connect/i.test(call.telephonyStatus||'') || /answer/i.test(call.telephonyStatus||'');
+    var call = rcCallOf(d); if(!call) return;
+    if(call.direction && call.direction !== 'Inbound') return;   // ignora salientes
+    var id = rcCallId(call);
+    if(id && rcEndedIds[id]) return;                             // llamada ya terminada → ignora sus eventos tardíos
+    var st = rcState(d.type, call);
+    if(st === 'ended'){ endCall(id); return; }
+    if(st === 'other') return;                                   // estado ambiguo → no dispares nada (evita falso timbre)
     var ex = extractCallFrom(call);
     var prev = window.__lastFrom || {};
     var from = {
@@ -823,11 +875,11 @@ window.addEventListener('message', function(e){
       name:            ex.name            || prev.name            || ''
     };
     if(from.phoneNumber || from.extensionNumber || from.name) window.__lastFrom = from;
-    onIncoming(from.phoneNumber || from.extensionNumber || '', answered, from);
+    onIncoming(from.phoneNumber || from.extensionNumber || '', st === 'answered', from);
   }
 
-  // Llamada terminada / colgada / rechazada → callar la alerta
-  if(d.type === 'rc-call-end-notify'){ window.__lastFrom = null; callEnded(); clearTranscriptForNextCall(); }
+  // Llamada terminada / colgada / rechazada
+  if(d.type === 'rc-call-end-notify'){ endCall(rcCallId(rcCallOf(d))); }
 });
 
 /* Ciudad aproximada por código de área (gratis, instantáneo). El área ≠ dónde vive, pero da contexto. */
@@ -875,10 +927,11 @@ function callEnded(){
   $('incMeta').textContent = '';
   $('incActions').style.display = 'none';
 }
-// Al terminar la llamada: limpia el transcript y la sugerencia para la siguiente llamada
-// (deja el transcript CORRIENDO, no lo detiene, para no tener que volver a compartir la pestaña)
-function clearTranscriptForNextCall(){
+// Al terminar la llamada: DETIENE el transcript por completo y limpia (no puede seguir corriendo)
+function stopTranscriptOnCallEnd(){
   try{
+    if(typeof dgRunning!=='undefined' && dgRunning) dgStop();
+    else if(typeof trRunning!=='undefined' && trRunning) trStop();
     var hud=document.getElementById('trHUD');
     if(hud){ hud.innerHTML=''; hud.dataset.full=''; hud.dataset.last=''; }
     var sg=document.getElementById('addrSuggest'); if(sg) sg.style.display='none';
@@ -943,7 +996,7 @@ async function trStart(){
     src.connect(trNode); trNode.connect(trSink); trSink.connect(trCtx.destination);
 
     trRunning=true; trLastAddr='';
-    $('trBtn').textContent='⏹ Detener transcript'; $('trBtn').disabled=false;
+    $('trBtn').textContent='⏹ Stop transcript'; $('trBtn').disabled=false;
     trSetStatus('🎧 Listening to the call…');
     $('trHUD').dataset.full='';
   }catch(err){
@@ -1064,7 +1117,7 @@ function trStop(){
   try{ if(trCtx && trCtx.state!=='closed') trCtx.close(); }catch(e){}
   try{ if(trStream) trStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
   trNode=trSink=trCtx=trStream=null; trBuf=[];
-  $('trBtn').textContent='🎧 Iniciar transcript'; $('trBtn').disabled=false;
+  $('trBtn').textContent='🎧 Start transcript'; $('trBtn').disabled=false;
   trSetStatus('Stopped. To start: share this tab\'s audio.');
 }
 
@@ -1122,7 +1175,7 @@ async function dgStart(){
     var sink = dgCtx.createGain(); sink.gain.value=0; dgProc.connect(sink); sink.connect(dgCtx.destination);
 
     // 4) WebSocket a Deepgram (multichannel = separa Agente/Cliente)
-    var qs = 'model=nova-3&language=multi&endpointing=100&multichannel=true&channels=2&sample_rate=16000&encoding=linear16&punctuate=true&smart_format=true&interim_results=false';
+    var qs = 'model=nova-3&language=multi&endpointing=100&multichannel=true&channels=2&sample_rate=16000&encoding=linear16&punctuate=true&smart_format=true&numerals=true&interim_results=false';
     dgWS = new WebSocket('wss://api.deepgram.com/v1/listen?'+qs, ['token', kd.key]);
     dgWS.binaryType='arraybuffer';
     dgWS.onopen  = function(){ trSetStatus('🎧 Listening… (Agent + Client live)'); };
@@ -1149,7 +1202,7 @@ async function dgStart(){
 
     dgRunning=true; trLastAddr=''; dgClientBuf='';
     $('trHUD').innerHTML=''; $('trHUD').dataset.full='';
-    $('trBtn').textContent='⏹ Detener transcript'; $('trBtn').disabled=false;
+    $('trBtn').textContent='⏹ Stop transcript'; $('trBtn').disabled=false;
     trSetStatus('🎧 Listening… (Agent + Client live)');
 
     // A los ~7s: si el canal del Cliente sigue casi mudo comparado al mic, avisa qué revisar
@@ -1196,7 +1249,7 @@ function dgStop(){
   try{ if(dgMicStream) dgMicStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
   try{ if(dgTabStream) dgTabStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
   dgWS=dgProc=dgCtx=dgMicStream=dgTabStream=null;
-  $('trBtn').textContent='🎧 Iniciar transcript'; $('trBtn').disabled=false;
+  $('trBtn').textContent='🎧 Start transcript'; $('trBtn').disabled=false;
   trSetStatus('Stopped. To start: allow the microphone + share this tab\'s audio.');
 }
 
