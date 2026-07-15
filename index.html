@@ -876,7 +876,11 @@ $('trBtn').addEventListener('click', function(){
 async function trStart(){
   $('trBtn').disabled=true;
   try{
-    trStream = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+    trStream = await navigator.mediaDevices.getDisplayMedia({
+      video:true, audio:true,
+      preferCurrentTab:true,
+      selfBrowserSurface:'include'
+    });
     if(!trStream.getAudioTracks().length){ toast('Marca “Compartir audio de la pestaña”'); return trStop(); }
     trStream.getVideoTracks().forEach(function(t){ t.stop(); });
     trStream.getAudioTracks()[0].onended = function(){ trStop(); };
@@ -1034,7 +1038,11 @@ async function dgStart(){
 
     // 2) micrófono (Agente) + audio de la pestaña (Cliente)
     dgMicStream = await navigator.mediaDevices.getUserMedia({ audio:true });
-    dgTabStream = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+    dgTabStream = await navigator.mediaDevices.getDisplayMedia({
+      video:true, audio:true,
+      preferCurrentTab:true,          // pide directo ESTA pestaña (donde está la llamada), sin listar las demás
+      selfBrowserSurface:'include'
+    });
     if(!dgTabStream.getAudioTracks().length){ toast('Marca “Compartir audio de la pestaña”'); return dgStop(); }
     dgTabStream.getVideoTracks().forEach(function(t){ t.stop(); });
     dgTabStream.getAudioTracks()[0].onended = function(){ dgStop(); };
