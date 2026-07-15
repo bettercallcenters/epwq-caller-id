@@ -181,11 +181,23 @@
         </div>
       </div>
 
+      <!-- Info del cliente (auto al entrar la llamada, dentro de la app) -->
+      <div id="callerInfo" style="display:none;margin:0 0 14px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff">
+        <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--soft);border-bottom:1px solid var(--line)">
+          <b style="font-size:13px">🪪 Caller info</b>
+          <span id="callerInfoStatus" style="font-size:12px;color:var(--muted)"></span>
+          <a id="callerInfoOpen" href="#" target="_blank" rel="noopener" class="btn ghost sm" style="margin-left:auto;display:none">↗ Open</a>
+          <button class="btn ghost sm" id="callerInfoClose">✕</button>
+        </div>
+        <div id="callerInfoBody" style="padding:12px"></div>
+      </div>
+
       <!-- Alert controls -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
         <button class="btn ghost sm" id="notifBtn">🔔 Enable desktop alerts</button>
         <button class="btn ghost sm" id="muteBtn">🔊 Sound: on</button>
         <button class="btn ghost sm" id="testAlert">▶︎ Test alert</button>
+        <button class="btn ghost sm" id="lookupCfg" style="margin-left:auto">🪪 Caller lookup: off</button>
       </div>
 
       <!-- ===== LIVE TRANSCRIPT ===== -->
@@ -497,7 +509,68 @@ function openUsp(s){
     'USPhonebook can\'t be shown inside this page (bot protection blocks embedding). It opens in a new tab for this number:<br><b>'+esc(prettyPhone(s))+'</b>');
 }
 $('uspBtn').addEventListener('click', function(){ openUsp($('phone').value); });
-$('incUsp').addEventListener('click', function(){ openUsp($('phone').value); });
+$('incUsp').addEventListener('click', function(){
+  // Manual: si hay bot configurado, busca dentro de la app; si no, abre USPhonebook en pestaña
+  if(callerLookupUrl()) lookupCaller($('phone').value); else openUsp($('phone').value);
+});
+
+/* ===== Caller info: busca en el bot (Playwright/Railway) y lo muestra DENTRO de la app ===== */
+var LOOKUP_KEY='epwq_caller_lookup_url';
+function callerLookupUrl(){ return (localStorage.getItem(LOOKUP_KEY)||'').trim().replace(/\/+$/,''); }
+function updateLookupLabel(){ var b=$('lookupCfg'); if(b) b.textContent='🪪 Caller lookup: '+(callerLookupUrl()?'on ✔':'off'); }
+if($('lookupCfg')) $('lookupCfg').addEventListener('click', function(){
+  var v=prompt('Paste your USPhonebook lookup bot URL (from Railway).\nExample: https://your-app.up.railway.app\n\nLeave empty to turn it off.', callerLookupUrl());
+  if(v===null) return;
+  localStorage.setItem(LOOKUP_KEY, v.trim().replace(/\/+$/,''));
+  updateLookupLabel();
+  toast(callerLookupUrl()?'Caller lookup enabled':'Caller lookup off');
+});
+if($('callerInfoClose')) $('callerInfoClose').addEventListener('click', function(){ $('callerInfo').style.display='none'; });
+
+var lastLookedUp='';
+function lookupCaller(num){
+  var base=callerLookupUrl(), d=digits(num);
+  if(!base){ toast('Set the Caller lookup URL first (🪪 button)'); return; }
+  if(d.length!==10){ toast('No valid number to look up'); return; }
+  var panel=$('callerInfo'), body=$('callerInfoBody'), st=$('callerInfoStatus');
+  panel.style.display=''; st.textContent='searching…';
+  $('callerInfoOpen').style.display='none';
+  body.innerHTML='<div style="color:var(--muted);font-size:13px;padding:6px 0">🔎 Looking up '+esc(prettyPhone(num))+'… (a few seconds)</div>';
+  window.__lookupNum=d;
+  fetch(base+'/lookup?phone='+d).then(function(r){ return r.json(); }).then(function(data){
+    if(window.__lookupNum!==d) return;    // entró otra llamada → ignora esta respuesta
+    renderCaller(data, num);
+  }).catch(function(){
+    if(window.__lookupNum!==d) return;
+    st.textContent='error';
+    body.innerHTML='<div style="color:#b91c1c;font-size:13px">Couldn\'t reach the lookup bot. Check the URL (🪪) and that Railway is running.</div>';
+  });
+}
+function renderCaller(data, num){
+  var body=$('callerInfoBody'), st=$('callerInfoStatus');
+  if(data && data.url){ $('callerInfoOpen').href=data.url; $('callerInfoOpen').style.display=''; }
+  if(data && data.ok){
+    st.textContent = data.cached ? 'from cache' : 'found ✔';
+    var rows=[];
+    if(data.name)    rows.push('<div style="font-size:16px;font-weight:800">'+esc(data.name)+'</div>');
+    if(data.aka)     rows.push('<div style="font-size:12px;color:var(--muted);margin-top:2px">Also known as: '+esc(data.aka)+'</div>');
+    if(data.age)     rows.push('<div style="font-size:13px;margin-top:5px">🎂 '+esc(data.age)+'</div>');
+    if(data.address) rows.push('<div style="font-size:14px;margin-top:5px">🏠 '+esc(data.address)+'</div>');
+    var ph=[data.phone,data.lineType,data.carrier].filter(Boolean).join(' · ');
+    if(ph)           rows.push('<div style="font-size:13px;margin-top:5px">📞 '+esc(ph)+'</div>');
+    var fields = rows.length ? '<div style="margin-bottom:'+(data.screenshot?'10px':'0')+'">'+rows.join('')+'</div>' : '';
+    var img = data.screenshot ? '<img src="data:image/jpeg;base64,'+data.screenshot+'" alt="USPhonebook result" style="width:100%;border:1px solid var(--line);border-radius:8px">' : '';
+    body.innerHTML = (fields+img) || '<div style="color:var(--muted);font-size:13px">Found, but no details could be read.</div>';
+  } else if(data && data.reason==='blocked'){
+    st.textContent='human check';
+    var img2 = data.screenshot ? '<img src="data:image/jpeg;base64,'+data.screenshot+'" style="width:100%;border:1px solid var(--line);border-radius:8px;opacity:.9">' : '';
+    body.innerHTML='<div style="color:#b45309;font-size:13px;margin-bottom:8px">USPhonebook asked for a human check this time (normal ~20–40%). Use ↗ Open to solve it in a tab.</div>'+img2;
+  } else {
+    st.textContent='not found';
+    body.innerHTML='<div style="color:var(--muted);font-size:13px">No public record for '+esc(prettyPhone(num))+' (normal for ~20–40% of numbers).</div>';
+  }
+}
+updateLookupLabel();
 $('phone').addEventListener('input', buildMsg);
 
 /* ============================================================
@@ -1170,6 +1243,9 @@ function onIncoming(num, answered, from){
   $('incActions').style.display = num ? 'flex' : 'none';
   if(num){ $('phone').value = pretty; buildMsg(); }
 
+  // AUTO: busca la info del cliente en el bot (una vez por número) y la muestra dentro de la app
+  if(num){ var dnum=digits(num); if(dnum.length===10 && dnum!==lastLookedUp && callerLookupUrl()){ lastLookedUp=dnum; lookupCaller(num); } }
+
   // Info automática: nombre (RingCentral) + ciudad por código de área
   var name = (from.name && !/^\+?\d[\d\s()+-]*$/.test(from.name)) ? from.name : '';  // ignora si el "name" es solo el número
   var loc  = areaLoc(num);
@@ -1184,6 +1260,7 @@ function onIncoming(num, answered, from){
 }
 function callEnded(){
   alertStop();
+  lastLookedUp='';   // la próxima llamada (aunque sea el mismo número) vuelve a buscar
   var box = $('incoming'); box.classList.remove('live');
   box.querySelector('.lbl').textContent = 'Waiting for call';
   $('incNum').textContent = '— — —';
