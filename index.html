@@ -1254,8 +1254,7 @@ window.addEventListener('message', function(e){
     window.__callActive = true;                                 // solo para que el timer de "Test alert" no borre una llamada real
     onIncoming(from.phoneNumber || from.extensionNumber || '', st === 'answered', from);
     reportStatus(st === 'answered' ? 'oncall' : 'ringing');   // HUD de equipo
-    if(st === 'answered') callIsActive = true;
-    if(dgArmed) dgConnect();   // AUTO-transcript: arranca en el timbre o al contestar, lo que llegue primero
+    if(st === 'answered'){ callIsActive = true; if(dgArmed) dgConnect(); }   // AUTO-transcript SOLO al contestar (no en el timbre, no por voz)
   }
 
   // Llamada terminada / colgada / rechazada
@@ -1839,19 +1838,12 @@ function startMeters(){
     var a=document.getElementById('meterMic'), b=document.getElementById('meterCall');
     if(a) a.style.width=Math.min(100, dgLevel[0]*160)+'%';
     if(b) b.style.width=Math.min(100, dgLevel[1]*160)+'%';
-    // AUTO-ARRANQUE: si hay voz del CLIENTE (canal pestaña, solo suena en llamada real) y está armado → conecta,
-    // aunque RingCentral no mande el evento de "contestada".
-    var callSound = dgLevel[1] > 0.045;                 // voz del CLIENTE (pestaña) — solo suena en llamada real
-    var micTalk   = dgLevel[0] > 0.10;                  // o el AGENTE hablando (respaldo si la pestaña no trae audio)
+    // El transcript arranca SOLO al CONTESTAR la llamada (evento de RingCentral). Aquí NO se arranca por voz
+    // (antes el micrófono del agente lo prendía sin llamada). Solo se auto-corta tras silencio largo.
     var anySound  = dgLevel[0] > 0.05 || dgLevel[1] > 0.03;
-    if(dgArmed && !dgConnected){
-      if(callSound || micTalk){ dgVoiceTicks++; if(dgVoiceTicks>=2){ dgVoiceTicks=0; dgConnect(); } }
-      else dgVoiceTicks=0;
-    }
-    // AUTO-CORTE: si ya está transcribiendo y hay ~30s de silencio total (por si no llega el evento de fin) → guarda y corta.
     if(dgArmed && dgConnected){
       if(anySound) dgSilenceTicks=0; else dgSilenceTicks++;
-      if(dgSilenceTicks > 250){ dgSilenceTicks=0; dgDisconnect(); }   // 120ms * 250 ≈ 30s
+      if(dgSilenceTicks > 250){ dgSilenceTicks=0; dgDisconnect(); }   // ~30s de silencio total → guarda y corta (respaldo)
     }
   }, 120);
 }
