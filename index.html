@@ -166,7 +166,7 @@
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
           <button class="btn primary sm" id="trBtn">🎧 Iniciar transcript</button>
           <span class="badge" style="background:#fef3c7;color:#b45309">experimento</span>
-          <span class="hintline" id="trStatus" style="margin:0;flex:1;min-width:160px">Comparte el audio de <b>esta pestaña</b>. Al oír una dirección te la sugiere.</span>
+          <span class="hintline" id="trStatus" style="margin:0;flex:1;min-width:160px">Al iniciar: <b>permite el micrófono</b> y <b>comparte el audio de esta pestaña</b>. Separa Agente/Cliente y detecta la dirección.</span>
         </div>
         <div id="trSuggest" style="display:none;margin-bottom:8px"></div>
         <div id="trHUD" style="height:240px;min-height:120px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;font-size:15px;line-height:1.6"></div>
@@ -865,7 +865,13 @@ var transcriber=null, trStream=null, trCtx=null, trNode=null, trSink=null, trBuf
 var TR_SR=16000, TR_CHUNK=TR_SR*5;   // procesa cada ~5 seg
 
 function trSetStatus(t){ $('trStatus').innerHTML = t; }
-$('trBtn').addEventListener('click', function(){ trRunning ? trStop() : trStart(); });
+// URL de tu Supabase que entrega la key de Deepgram (server-side, con candado de dominio).
+// Si está puesta → usa Deepgram (calidad, quién habla). Si se vacía → usa Whisper gratis.
+var DEEPGRAM_KEY_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/dg-key';
+$('trBtn').addEventListener('click', function(){
+  if(DEEPGRAM_KEY_URL){ dgRunning ? dgStop() : dgStart(); }
+  else { trRunning ? trStop() : trStart(); }
+});
 
 async function trStart(){
   $('trBtn').disabled=true;
@@ -1008,6 +1014,100 @@ function trStop(){
   trNode=trSink=trCtx=trStream=null; trBuf=[];
   $('trBtn').textContent='🎧 Iniciar transcript'; $('trBtn').disabled=false;
   trSetStatus('Detenido. Comparte el audio de la pestaña para empezar.');
+}
+
+/* ============================================================
+   DEEPGRAM en vivo — 🎧 micrófono (Agente) + 📞 pestaña (Cliente)
+   en 2 canales → Deepgram separa quién habla, cada palabra.
+============================================================ */
+var dgWS=null, dgCtx=null, dgProc=null, dgMicStream=null, dgTabStream=null, dgRunning=false;
+
+function clamp16(f){ var s=Math.max(-1,Math.min(1,f)); return s<0 ? s*0x8000 : s*0x7FFF; }
+
+async function dgStart(){
+  $('trBtn').disabled=true;
+  try{
+    trSetStatus('⏳ Conectando…');
+    // 1) key temporal desde tu Supabase (server-side)
+    var kd = await fetch(DEEPGRAM_KEY_URL).then(function(r){ return r.json(); });
+    if(!kd || !kd.key) throw new Error('No se pudo obtener la key (Supabase)');
+
+    // 2) micrófono (Agente) + audio de la pestaña (Cliente)
+    dgMicStream = await navigator.mediaDevices.getUserMedia({ audio:true });
+    dgTabStream = await navigator.mediaDevices.getDisplayMedia({ video:true, audio:true });
+    if(!dgTabStream.getAudioTracks().length){ toast('Marca “Compartir audio de la pestaña”'); return dgStop(); }
+    dgTabStream.getVideoTracks().forEach(function(t){ t.stop(); });
+    dgTabStream.getAudioTracks()[0].onended = function(){ dgStop(); };
+
+    // 3) mezcla a 2 canales: canal 0 = Agente (mic), canal 1 = Cliente (pestaña)
+    dgCtx = new (window.AudioContext||window.webkitAudioContext)({ sampleRate:16000 });
+    if(dgCtx.state==='suspended') await dgCtx.resume();
+    var micSrc = dgCtx.createMediaStreamSource(dgMicStream);
+    var tabSrc = dgCtx.createMediaStreamSource(dgTabStream);
+    var merger = dgCtx.createChannelMerger(2);
+    micSrc.connect(merger, 0, 0);
+    tabSrc.connect(merger, 0, 1);
+    dgProc = dgCtx.createScriptProcessor(4096, 2, 2);
+    merger.connect(dgProc);
+    var sink = dgCtx.createGain(); sink.gain.value=0; dgProc.connect(sink); sink.connect(dgCtx.destination);
+
+    // 4) WebSocket a Deepgram (multichannel = separa Agente/Cliente)
+    var qs = 'model=nova-2&language=es&multichannel=true&channels=2&sample_rate=16000&encoding=linear16&punctuate=true&smart_format=true&interim_results=false';
+    dgWS = new WebSocket('wss://api.deepgram.com/v1/listen?'+qs, ['token', kd.key]);
+    dgWS.binaryType='arraybuffer';
+    dgWS.onopen  = function(){ trSetStatus('🎧 Escuchando… (Agente + Cliente en vivo)'); };
+    dgWS.onerror = function(){ trSetStatus('⚠️ Error de conexión con Deepgram'); };
+    dgWS.onclose = function(){ if(dgRunning) trSetStatus('Conexión cerrada.'); };
+    dgWS.onmessage = function(m){
+      var d; try{ d=JSON.parse(m.data); }catch(e){ return; }
+      if(!d.channel || !d.channel.alternatives) return;
+      var text = (d.channel.alternatives[0] && d.channel.alternatives[0].transcript || '').trim();
+      if(!text) return;
+      var ch = (d.channel_index && d.channel_index[0]) || 0;   // 0=Agente, 1=Cliente
+      dgAppend(ch, text);
+    };
+
+    dgProc.onaudioprocess = function(e){
+      if(!dgWS || dgWS.readyState!==1) return;
+      var l=e.inputBuffer.getChannelData(0), r=e.inputBuffer.getChannelData(1);
+      var pcm=new Int16Array(l.length*2);
+      for(var i=0;i<l.length;i++){ pcm[i*2]=clamp16(l[i]); pcm[i*2+1]=clamp16(r[i]); }
+      dgWS.send(pcm.buffer);
+    };
+
+    dgRunning=true; trLastAddr='';
+    $('trHUD').innerHTML=''; $('trHUD').dataset.full='';
+    $('trBtn').textContent='⏹ Detener transcript'; $('trBtn').disabled=false;
+  }catch(err){
+    toast('No se pudo iniciar el transcript');
+    trSetStatus('Error: ' + (err && err.message || err));
+    dgStop();
+  }
+}
+
+function dgAppend(ch, text){
+  var el=$('trHUD');
+  var atBottom=(el.scrollHeight-el.scrollTop-el.clientHeight)<40;
+  var cliente = (ch===1);
+  var line=document.createElement('div');
+  line.style.margin='3px 0';
+  line.innerHTML='<b style="color:'+(cliente?'#86efac':'#93c5fd')+'">'+(cliente?'🗣️ Cliente':'🧑‍💼 Agente')+':</b> '+esc(text);
+  el.appendChild(line);
+  el.dataset.full=((el.dataset.full||'')+' '+text).slice(-8000);
+  if(atBottom) el.scrollTop=el.scrollHeight;
+  if(cliente) trDetectAddress(text);   // la dirección la dice el CLIENTE
+}
+
+function dgStop(){
+  dgRunning=false;
+  try{ if(dgWS){ if(dgWS.readyState===1) dgWS.send(JSON.stringify({type:'CloseStream'})); dgWS.close(); } }catch(e){}
+  try{ if(dgProc){ dgProc.disconnect(); dgProc.onaudioprocess=null; } }catch(e){}
+  try{ if(dgCtx && dgCtx.state!=='closed') dgCtx.close(); }catch(e){}
+  try{ if(dgMicStream) dgMicStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
+  try{ if(dgTabStream) dgTabStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
+  dgWS=dgProc=dgCtx=dgMicStream=dgTabStream=null;
+  $('trBtn').textContent='🎧 Iniciar transcript'; $('trBtn').disabled=false;
+  trSetStatus('Detenido. Al iniciar: permite micrófono + comparte el audio de la pestaña.');
 }
 
 /* ============================================================
