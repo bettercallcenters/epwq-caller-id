@@ -26,35 +26,35 @@
   header .sub{font-size:12px;opacity:.9;margin-top:2px}
   header .who{margin-left:auto;font-size:12px;opacity:.9;text-align:right}
 
-  .wrap{max-width:1120px;margin:18px auto;padding:0 16px;display:grid;
-        grid-template-columns:1.15fr .85fr;gap:16px}
+  .wrap{max-width:1120px;margin:12px auto;padding:0 12px;display:grid;
+        grid-template-columns:1.15fr .85fr;gap:12px}
   @media (max-width:900px){.wrap{grid-template-columns:1fr}}
   /* Reserva espacio a la derecha para el softphone flotante de RingCentral (no tapa el contenido) */
   @media (min-width:1024px){ body{padding-right:330px} }
 
   .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
         overflow:hidden}
-  .card h2{font-size:13px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
-        margin:0;padding:12px 16px;border-bottom:1px solid var(--line);background:var(--soft);
+  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
+        margin:0;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--soft);
         display:flex;align-items:center;gap:8px}
-  .card .body{padding:16px}
+  .card .body{padding:12px 14px}
   .step{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;
         background:var(--brand);color:#fff;font-size:12px;font-weight:700}
 
   /* Incoming banner */
-  #incoming{margin:0 0 14px;border-radius:12px;padding:14px 16px;border:1px dashed var(--line);
-        background:var(--soft);color:var(--muted);display:flex;align-items:center;gap:14px}
+  #incoming{margin:0 0 10px;border-radius:12px;padding:10px 14px;border:1px dashed var(--line);
+        background:var(--soft);color:var(--muted);display:flex;align-items:center;gap:12px}
   #incoming.live{background:linear-gradient(90deg,#dcfce7,#f0fdf4);border:1px solid #86efac;color:#065f46;
         animation:pulse 1.2s ease-in-out infinite}
   @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(22,163,74,.35)}50%{box-shadow:0 0 0 8px rgba(22,163,74,0)}}
-  #incoming .ic{font-size:26px}
-  #incoming .num{font-size:22px;font-weight:800;letter-spacing:.5px}
+  #incoming .ic{font-size:22px}
+  #incoming .num{font-size:20px;font-weight:800;letter-spacing:.5px}
   #incoming .lbl{font-size:12px;text-transform:uppercase;letter-spacing:.6px;opacity:.8}
   #incoming .sp{margin-left:auto;display:flex;gap:8px}
 
   label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 5px;
         text-transform:uppercase;letter-spacing:.4px}
-  .field{margin-bottom:14px;position:relative}
+  .field{margin-bottom:10px;position:relative}
   /* Modo compacto (Appointment Details): todo a la vista sin scroll, para agendar EN VIVO */
   .compact .field{margin-bottom:9px}
   .compact label{font-size:11px;margin:0 0 4px}
@@ -62,14 +62,14 @@
   .compact .seg button{padding:6px 9px;font-size:12px}
   .compact input[type=date],.compact select.sel{padding:8px 10px;font-size:14px}
   .compact textarea{min-height:38px;padding:8px 10px;font-size:13px}
-  input[type=text],textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;
-        font-size:15px;color:var(--ink);background:#fff;outline:none;transition:border .15s,box-shadow .15s}
+  input[type=text],textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;
+        font-size:14px;color:var(--ink);background:#fff;outline:none;transition:border .15s,box-shadow .15s}
   input[type=text]:focus,textarea:focus{border-color:var(--brand2);box-shadow:0 0 0 3px rgba(14,165,233,.15)}
   textarea{resize:vertical;min-height:120px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
 
   .row{display:flex;gap:10px}.row>*{flex:1}
-  input[type=date],select.sel{padding:11px 12px;border:1px solid var(--line);border-radius:10px;
-        font-size:15px;background:#fff;color:var(--ink);outline:none;font-family:inherit}
+  input[type=date],select.sel{padding:9px 11px;border:1px solid var(--line);border-radius:10px;
+        font-size:14px;background:#fff;color:var(--ink);outline:none;font-family:inherit}
   input[type=date]:focus,select.sel:focus{border-color:var(--brand2);box-shadow:0 0 0 3px rgba(14,165,233,.15)}
 
   .btn{appearance:none;border:1px solid transparent;border-radius:10px;padding:10px 14px;font-size:14px;
@@ -105,8 +105,8 @@
   .ac .opt .sub{font-size:12px;color:var(--muted)}
   .ac .hint{padding:8px 12px;font-size:12px;color:var(--muted)}
 
-  .msgbox{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:14px;white-space:pre-wrap;
-        font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:15px;line-height:1.6;min-height:110px}
+  .msgbox{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px;white-space:pre-wrap;
+        font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;line-height:1.55;min-height:90px}
   .hintline{font-size:12px;color:var(--muted);margin:8px 0 0}
   .divider{height:1px;background:var(--line);margin:14px 0}
 
@@ -128,8 +128,8 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  .mapsGrid{display:grid;grid-template-columns:1fr;gap:16px}   /* apilados a todo lo ancho = mapas más grandes, nombres legibles */
-  .mapBox{height:460px;background:#e2e8f0;border-radius:12px;overflow:hidden}
+  .mapsGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}   /* lado a lado, compactos dentro de Call Info */
+  .mapBox{height:225px;background:#e2e8f0;border-radius:10px;overflow:hidden}
   #houseMapZone{height:520px}   /* el mapa de zona un poco más alto para ver las calles principales */
   .mapTitle{font-size:13px;font-weight:700;color:var(--muted);margin:0 0 6px}
   .leaflet-container{border-radius:12px;font:inherit}
@@ -145,8 +145,9 @@
     header .who{font-size:11px}
     .card .body{padding:12px}
     .card h2{padding:10px 12px;font-size:12px}
-    .field{margin-bottom:12px}
-    .mapBox{height:260px}
+    .field{margin-bottom:10px}
+    .mapsGrid{grid-template-columns:1fr}
+    .mapBox{height:220px}
     #trHUD{height:190px}
     /* inputs a 16px evita que el iPhone haga zoom al enfocar */
     input[type=text],textarea,select.sel,input[type=date]{font-size:16px}
@@ -237,7 +238,7 @@
       <!-- Find owner -->
       <div class="field">
         <button class="btn primary wide" id="ownerBtn">🏠 Find owner &nbsp;→&nbsp; <span id="ownerBtnLbl">open EPCAD</span></button>
-        <div class="hintline">Shows the county record <b>right here</b> with the owner — no re-typing. (Doña Ana opens in a tab: it blocks embedding.)</div>
+        <div class="hintline" style="margin-top:4px">Shows the owner <b>right here</b> (El Paso and Doña Ana county records) — no re-typing.</div>
       </div>
 
       <!-- Recuadro del dueño: EPCAD embebido; Doña Ana/USPhonebook como lanzador (bloquean iframe) -->
@@ -247,12 +248,12 @@
           <a id="ownerPanelOpen" class="btn ghost sm" href="#" target="_blank" rel="noopener" style="margin-left:auto">↗ Open in tab</a>
           <button class="btn ghost sm" id="ownerPanelClose">✕</button>
         </div>
-        <iframe id="ownerFrame" style="width:100%;height:430px;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
+        <iframe id="ownerFrame" style="width:100%;height:360px;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
         <div id="ownerLaunch" style="display:none;border:1px dashed var(--line);border-radius:12px;background:#f8fafc;padding:22px 18px;text-align:center">
           <div id="ownerLaunchMsg" style="color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:14px"></div>
           <a id="ownerLaunchBtn" class="btn" href="#" target="_blank" rel="noopener" style="font-size:15px;display:inline-block">↗ Open <span id="ownerLaunchSite">site</span> in a new tab</a>
         </div>
-        <div id="ownerGis" style="display:none;border:1px solid var(--line);border-radius:12px;background:#fff;padding:16px 16px"></div>
+        <div id="ownerGis" style="display:none;border:1px solid var(--line);border-radius:12px;background:#fff;padding:12px 14px"></div>
       </div>
 
       <!-- Owner name -->
@@ -264,6 +265,25 @@
         </div>
         <div id="ownerCopied" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:var(--ok);background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px">✓ Owner name copied</div>
         <div id="ownerDetected" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px"></div>
+      </div>
+
+      <!-- Mapas compactos: techo (paneles) + zona (calles principales) -->
+      <div class="field" id="mapCard" style="display:none;margin-bottom:0">
+        <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">
+          <label style="margin:0">🗺️ House &amp; area</label>
+          <a id="gmapsBtn" class="btn ghost sm" href="#" target="_blank" rel="noopener" style="margin-left:auto">🔎 Google Maps</a>
+        </div>
+        <div id="zoneStreets" style="font-size:13px;margin:0 0 6px;line-height:1.5"></div>
+        <div class="mapsGrid">
+          <div>
+            <div class="mapTitle">🛰️ Roof (solar panels?)</div>
+            <div id="houseMapSat" class="mapBox"></div>
+          </div>
+          <div>
+            <div class="mapTitle">🗺️ Main streets</div>
+            <div id="houseMapZone" class="mapBox"></div>
+          </div>
+        </div>
       </div>
 
     </div>
@@ -289,7 +309,7 @@
             <div style="flex:1">🎤 You (mic)<div class="meterTrack"><div id="meterMic" class="meterFill"></div></div></div>
             <div style="flex:1">📞 Call (client)<div class="meterTrack"><div id="meterCall" class="meterFill"></div></div></div>
           </div>
-          <div id="trHUD" style="height:260px;min-height:120px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;font-size:15px;line-height:1.6"></div>
+          <div id="trHUD" style="height:200px;min-height:100px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:12px;font-size:14px;line-height:1.55"></div>
           <div class="hintline" style="margin-top:4px">Scroll up/down to review the conversation, and drag the corner ↘ to make it bigger.</div>
         </div>
       </div>
@@ -369,28 +389,6 @@
         <div id="teamList" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--muted);font-size:13px">Connecting…</span></div>
         <div id="teamAlert" style="display:none;margin-top:10px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 12px;font-weight:800;font-size:15px">🚨 TODOS EN LLAMADA — favor de contestar</div>
         <div class="hintline" style="margin-top:8px">Each agent's app reports its own status. Shows only agents with the app open. Voice + alert fire when everyone online is on a call.</div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ===== HOUSE & AREA VIEW (two maps) ===== -->
-  <div class="card" id="mapCard" style="grid-column:1/-1;display:none">
-    <h2>🗺️ House &amp; area view</h2>
-    <div class="body">
-      <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-        <a id="gmapsBtn" class="btn ghost sm" href="#" target="_blank" rel="noopener" style="flex:0 0 auto">🔎 Open in Google Maps (satellite)</a>
-        <span class="hintline" style="margin:0;flex:1;min-width:200px">Solar panels on the roof = buyer client → <b>potential appointment</b>. The area map highlights the main streets.</span>
-      </div>
-      <div class="mapsGrid">
-        <div>
-          <div class="mapTitle">🛰️ Roof (solar panels?)</div>
-          <div id="houseMapSat" class="mapBox"></div>
-        </div>
-        <div>
-          <div class="mapTitle">🗺️ Area — main streets</div>
-          <div id="zoneStreets" style="font-size:15px;margin:0 0 8px;line-height:1.6"></div>
-          <div id="houseMapZone" class="mapBox"></div>
-        </div>
       </div>
     </div>
   </div>
@@ -975,7 +973,8 @@ function showGoogleMaps(){
 
 /* ---- Etiquetas GRANDES de las calles principales (Google no deja agrandar sus letras) ----
    Saca las calles principales cercanas de OpenStreetMap y pone pastillas blancas con letra grande. */
-var OVERPASS_EPS = ['https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+/* mail.ru ELIMINADO: ignoraba el "around" y devolvía calles de otra ciudad (El Paso a 52km) — causa de las calles equivocadas */
+var OVERPASS_EPS = ['https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
 var zoneLabels = [];
 function clearZoneLabels(){ zoneLabels.forEach(function(m){ try{ m.setMap(null); }catch(e){} }); zoneLabels=[]; }
 
@@ -993,7 +992,8 @@ function addMainStreetLabels(lat, lng){
   clearZoneLabels();
   var listEl = document.getElementById('zoneStreets');
   if(listEl) listEl.innerHTML = '<span style="color:var(--muted)">Loading main streets…</span>';
-  var q = '[out:json][timeout:20];way(around:1700,'+lat+','+lng+')["highway"~"^(motorway|trunk|primary|secondary)$"]["name"];out geom;';   // SOLO principales (sin tertiary: fuera Tierra Cortez/Turner)
+  // Principales + terciarias (avenidas locales tipo Sanctuary Ave), radio 1.5km — luego se ordena por CERCANÍA real
+  var q = '[out:json][timeout:20];way(around:1500,'+lat+','+lng+')["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"]["name"];out geom;';
   var i = 0;
   function tryEp(){
     if(i >= OVERPASS_EPS.length){ if(listEl) listEl.innerHTML=''; return; }
@@ -1004,16 +1004,22 @@ function addMainStreetLabels(lat, lng){
   }
   function render(d){
     var byName = {}, elems = (d && d.elements) || [];
+    var kx = 111320*Math.cos(lat*Math.PI/180), ky = 110540;   // grados → metros en esta latitud
     elems.forEach(function(w){
       var name = w.tags && w.tags.name; if(!name || !w.geometry) return;
       var best=null, bd=1e18;
-      w.geometry.forEach(function(g){ var dd=(g.lat-lat)*(g.lat-lat)+(g.lon-lng)*(g.lon-lng); if(dd<bd){ bd=dd; best=g; } });
+      w.geometry.forEach(function(g){
+        var dx=(g.lon-lng)*kx, dy=(g.lat-lat)*ky, dd=Math.sqrt(dx*dx+dy*dy);   // metros reales
+        if(dd<bd){ bd=dd; best=g; }
+      });
       if(best && (!byName[name] || bd < byName[name].d)){
         byName[name] = { name:name, lat:best.lat, lng:best.lon, d:bd, rank:hwyRank(w.tags.highway) };
       }
     });
+    // LA MÁS CERCANA gana; la importancia solo da un empujón (rank*220m). Así "Sanctuary Ave" (cerca,
+    // terciaria) le gana a una primaria a 1.4km, pero un highway pegado sigue saliendo primero.
     var streets = Object.keys(byName).map(function(k){ return byName[k]; })
-      .sort(function(a,b){ return (a.rank-b.rank) || (a.d-b.d); }).slice(0,4);
+      .sort(function(a,b){ return (a.d + a.rank*220) - (b.d + b.rank*220); }).slice(0,3);
     if(gmapZone){
       streets.forEach(function(s){
         zoneLabels.push(new google.maps.Marker({ map:gmapZone, position:{lat:s.lat,lng:s.lng}, icon:streetLabelIcon(s.name), clickable:false, zIndex:900 }));
