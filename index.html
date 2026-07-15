@@ -208,6 +208,7 @@
         <button class="btn ghost sm" id="notifBtn">🔔 Enable desktop alerts</button>
         <button class="btn ghost sm" id="muteBtn">🔊 Sound: on</button>
         <button class="btn ghost sm" id="testAlert">▶︎ Test alert</button>
+        <button class="btn ghost sm" id="clearAll">🧹 Clear all</button>
         <button class="btn ghost sm" id="lookupCfg" style="margin-left:auto">🪪 Caller lookup: off</button>
       </div>
 
@@ -1058,6 +1059,13 @@ function showLeafletMaps(){
   setTimeout(function(){ try{ lmapSat.invalidateSize(); lmapZone.invalidateSize(); }catch(e){} }, 80);
 }
 
+// Limpia y oculta los mapas (marcadores/etiquetas de calles + coords), no solo esconder
+function clearMaps(){
+  try{ clearZoneLabels(); }catch(e){}
+  var zs=$('zoneStreets'); if(zs) zs.innerHTML='';
+  var mc=$('mapCard'); if(mc) mc.style.display='none';
+  lastLat=null; lastLng=null;
+}
 function setLatLng(lat,lng){
   lat=parseFloat(lat); lng=parseFloat(lng);
   if(isNaN(lat)||isNaN(lng)) return;
@@ -1230,6 +1238,7 @@ window.addEventListener('message', function(e){
     var st = rcState(d.type, call);
     if(st === 'ended'){ endCall(id); return; }
     if(st === 'other') return;                                   // estado ambiguo → no dispares nada (evita falso timbre)
+    if(!window.__callActive){ window.__callActive = true; resetForNewCall(); }   // 1er evento de una llamada NUEVA → todo a default
     var ex = extractCallFrom(call);
     var prev = window.__lastFrom || {};
     var from = {
@@ -1376,12 +1385,64 @@ function callEnded(){
   alertStop();
   lastLookedUp='';   // la próxima llamada (aunque sea el mismo número) vuelve a buscar
   window.__rcCallId = null;
+  window.__callActive = false;   // la próxima llamada cuenta como NUEVA → reinicia el formulario
   var box = $('incoming'); box.classList.remove('live');
   box.querySelector('.lbl').textContent = 'Waiting for call';
   $('incNum').textContent = '— — —';
   $('incMeta').textContent = '';
   $('incActions').style.display = 'none';
   try{ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; }catch(e){}   // limpia el recuadro del dueño
+}
+
+// Activa el chip cuyo data-<attr>===val dentro de un grupo (langChips / roleChips)
+function activateChip(groupId, attr, val){
+  var g=$(groupId); if(!g) return;
+  [].forEach.call(g.querySelectorAll('.chip'), function(x){ x.classList.toggle('on', x.dataset[attr]===val); });
+}
+
+// LLAMADA NUEVA → todo vuelve al inicio: borra notas/dirección/dueño y regresa la cita a sus valores por defecto
+function resetForNewCall(){
+  // Datos de la llamada anterior
+  if($('notes')) $('notes').value='';
+  if($('owner')) $('owner').value='';
+  if($('addr'))  $('addr').value='';
+  if($('phone')) $('phone').value='';   // si la nueva llamada no trae número (privado), NO deja el número anterior en el mensaje
+  state.addrCompact='';
+  try{ clearAC(); }catch(e){}
+  // Paneles del dueño / info del cliente / sugerencias del transcript / mapas
+  try{ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; }catch(e){}
+  var ol=$('ownerLaunch'); if(ol) ol.style.display='none';
+  var og=$('ownerGis'); if(og){ og.style.display='none'; og.innerHTML=''; }
+  var od=$('ownerDetected'); if(od){ od.style.display='none'; od.textContent=''; }
+  var oc=$('ownerCopied'); if(oc) oc.style.display='none';
+  var sg=$('addrSuggest'); if(sg){ sg.style.display='none'; sg.innerHTML=''; }
+  var ci=$('callerInfo'); if(ci) ci.style.display='none';
+  try{ clearMaps(); }catch(e){}
+  // Transcript viejo (el de la nueva llamada se llena solo)
+  var hud=$('trHUD'); if(hud){ hud.innerHTML=''; hud.dataset.full=''; hud.dataset.last=''; }
+  if(typeof dgClientBuf!=='undefined') dgClientBuf='';
+  if(typeof trLastAddr!=='undefined') trLastAddr='';
+  // Cita → valores por defecto (condado El Paso, Mañana, 4-6 Pm rango, Spanish, owner, sin hot lead)
+  try{ setCounty('epcad'); }catch(e){}
+  setDayOffset(1);
+  applyTimeMode('range'); $('timeFrom').value='16'; $('timeTo').value='18';
+  state.lang='Spanish'; activateChip('langChips','lang','Spanish');
+  state.role='owner';   activateChip('roleChips','role','owner');
+  state.hotLead=false;
+  var hl=$('hotLead'); if(hl){ hl.classList.remove('on'); hl.textContent='🔥 Mark as HOT LEAD'; }
+  buildMsg();
+}
+
+// Botón manual "Clear all": deja TODO en default (incluye transcript visible y mapas) sin colgar la llamada
+function doClearAll(){
+  resetForNewCall();                 // notas, dirección, dueño, paneles, cita→default, transcript HUD, mapas
+  if($('phone')) $('phone').value='';
+  var box=$('incoming'); if(box){ box.classList.remove('live'); var lbl=box.querySelector('.lbl'); if(lbl) lbl.textContent='Waiting for call'; }
+  if($('incNum')) $('incNum').textContent='— — —';
+  if($('incMeta')) $('incMeta').textContent='';
+  if($('incActions')) $('incActions').style.display='none';
+  buildMsg();
+  toast('🧹 Cleared — back to default');
 }
 // Al terminar la llamada: DETIENE el transcript por completo y limpia (no puede seguir corriendo)
 function stopTranscriptOnCallEnd(){
@@ -1659,6 +1720,7 @@ $('trClear').addEventListener('click', function(){
   dgClientBuf=''; trLastAddr='';
   toast('Transcript cleared');
 });
+if($('clearAll')) $('clearAll').addEventListener('click', doClearAll);
 
 function clamp16(f){ var s=Math.max(-1,Math.min(1,f)); return s<0 ? s*0x8000 : s*0x7FFF; }
 
@@ -1822,10 +1884,13 @@ function fmtRange(from,to){
 function computeWhen(){
   var val=$('apptDate').value, day='Today';
   if(val){
-    var today=ymd(new Date());
-    if(val===today) day='Today';
-    else { var d=new Date(val+'T00:00:00');   // cualquier otro día → nombre del día (jueves = Thursday), no "Tomorrow"
-      day = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+    var today=ymd(new Date()), tom=ymd(dateOff(1));
+    if(val===today){ day='Today'; }
+    else {
+      var d=new Date(val+'T00:00:00');
+      var wd=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+      // Mañana → solo el día (ej. "Friday"). De pasado en adelante → fecha exacta + día (ej. "7/21 Tuesday")
+      day = (val===tom) ? wd : ((d.getMonth()+1)+'/'+d.getDate()+' '+wd);
     }
   }
   var from=parseInt($('timeFrom').value,10), to=parseInt($('timeTo').value,10);
@@ -1844,13 +1909,16 @@ function updateDayChips(){
 function setDayOffset(n){ $('apptDate').value=ymd(dateOff(n)); updateDayChips(); buildMsg(); }
 
 var timeMode='range';   // 'range' (de…a…) | 'exact' (una hora)
-$('timeMode').addEventListener('click', function(e){
-  var b=e.target.closest('button'); if(!b) return;
-  timeMode=b.dataset.tm;
-  [].forEach.call(this.querySelectorAll('button'), function(x){ x.classList.toggle('on', x===b); });
-  var exact = (timeMode==='exact');
+function applyTimeMode(mode){
+  timeMode=mode;
+  [].forEach.call($('timeMode').querySelectorAll('button'), function(x){ x.classList.toggle('on', x.dataset.tm===mode); });
+  var exact=(mode==='exact');
   $('timeSep').style.display = exact ? 'none' : '';
   $('timeTo').style.display  = exact ? 'none' : '';
+}
+$('timeMode').addEventListener('click', function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  applyTimeMode(b.dataset.tm);
   buildMsg();
 });
 
