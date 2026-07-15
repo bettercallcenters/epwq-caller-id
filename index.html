@@ -171,7 +171,6 @@
           <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Borrar</button>
         </div>
         <div class="hintline" id="trStatus" style="margin:0 0 8px">Al iniciar: <b>permite el micrófono</b> y <b>comparte el audio de esta pestaña</b>. Separa Agente/Cliente y detecta la dirección.</div>
-        <div id="trSuggest" style="display:none;margin-bottom:8px"></div>
         <div id="trHUD" style="height:240px;min-height:120px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;font-size:15px;line-height:1.6"></div>
         <div class="hintline" style="margin-top:4px">Puedes <b>subir/bajar</b> para revisar la conversación, y jalar la esquina ↘ para hacerlo más grande.</div>
       </div>
@@ -196,6 +195,7 @@
         <label>Dirección de la casa (con sugerencias)</label>
         <input type="text" id="addr" placeholder="Empieza a escribir: 5513 Edinburg…" autocomplete="off" />
         <div class="ac" id="acBox"></div>
+        <div id="addrSuggest" style="display:none;margin-top:8px"></div>
         <div class="hintline">Escribe y elige la sugerencia correcta. Sesgado a la zona del condado seleccionado.</div>
       </div>
 
@@ -822,7 +822,7 @@ window.addEventListener('message', function(e){
   }
 
   // Llamada terminada / colgada / rechazada → callar la alerta
-  if(d.type === 'rc-call-end-notify'){ window.__lastFrom = null; callEnded(); }
+  if(d.type === 'rc-call-end-notify'){ window.__lastFrom = null; callEnded(); clearTranscriptForNextCall(); }
 });
 
 /* Ciudad aproximada por código de área (gratis, instantáneo). El área ≠ dónde vive, pero da contexto. */
@@ -869,6 +869,17 @@ function callEnded(){
   $('incNum').textContent = '— — —';
   $('incMeta').textContent = '';
   $('incActions').style.display = 'none';
+}
+// Al terminar la llamada: limpia el transcript y la sugerencia para la siguiente llamada
+// (deja el transcript CORRIENDO, no lo detiene, para no tener que volver a compartir la pestaña)
+function clearTranscriptForNextCall(){
+  try{
+    var hud=document.getElementById('trHUD');
+    if(hud){ hud.innerHTML=''; hud.dataset.full=''; hud.dataset.last=''; }
+    var sg=document.getElementById('addrSuggest'); if(sg) sg.style.display='none';
+    if(typeof dgClientBuf!=='undefined') dgClientBuf='';
+    if(typeof trLastAddr!=='undefined') trLastAddr='';
+  }catch(e){}
 }
 function prettyPhone(s){
   var d = digits(s);
@@ -992,13 +1003,16 @@ function trDetectAddress(full){
 // Muestra la sugerencia con botón de confirmar
 function trShowSuggest(addr){
   trSuggestAddr = addr; trResolvedCompact = addr;
-  $('addr').value = addr; state.addrCompact = addr; buildMsg();   // auto-llena la dirección detectada
-  var el = $('trSuggest'); el.style.display = '';
-  el.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#dcfce7;border:1px solid #86efac;border-radius:10px;padding:8px 10px">'
-    + '<span style="font-size:14px">📍 ¿Es esta la dirección? <b id="trSuggestTxt">' + esc(addr) + '</b></span>'
-    + '<button class="btn primary sm" id="trConfirm" style="margin-left:auto">✓ Usar y buscar dueño</button>'
-    + '<button class="btn ghost sm" id="trDismiss">✕</button></div>';
+  $('addr').value = addr; state.addrCompact = addr; buildMsg();   // auto-llena la dirección detectada en el campo
+  var el = $('addrSuggest'); el.style.display = '';
+  el.innerHTML = '<div style="background:#dcfce7;border:1px solid #86efac;border-radius:10px;padding:9px 11px">'
+    + '<div style="font-size:14px;margin-bottom:6px">📍 Detectada de la llamada: <b id="trSuggestTxt">' + esc(addr) + '</b> — ¿es correcta?</div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
+    + '<button class="btn primary sm" id="trConfirm">✓ Confirmar y buscar dueño</button>'
+    + '<button class="btn ghost sm" id="trEdit">✏️ Editar</button>'
+    + '<button class="btn ghost sm" id="trDismiss">✕ Descartar</button></div></div>';
   $('trConfirm').onclick = trConfirm;
+  $('trEdit').onclick = function(){ el.style.display='none'; $('addr').focus(); $('addr').select(); };
   $('trDismiss').onclick = function(){ el.style.display = 'none'; };
 }
 
@@ -1034,7 +1048,7 @@ function trConfirm(){
   var addr = trResolvedCompact || trSuggestAddr;
   $('addr').value = addr; state.addrCompact = addr; buildMsg();
   setRole('owner');                 // "configurar que sea dueño"
-  $('trSuggest').style.display = 'none';
+  $('addrSuggest').style.display = 'none';
   searchOwner();                    // abre EPCAD (TX) o Doña Ana (NM) + copia la dirección
 }
 
@@ -1064,7 +1078,7 @@ function agentLabel(){ return ($('agentName').value||'').trim() || 'Agente'; }
 
 $('trClear').addEventListener('click', function(){
   var el=$('trHUD'); el.innerHTML=''; el.dataset.full=''; el.dataset.last='';
-  $('trSuggest').style.display='none';
+  $('addrSuggest').style.display='none';
   dgClientBuf=''; trLastAddr='';
   toast('Transcript borrado');
 });
@@ -1163,11 +1177,9 @@ function dgAppend(ch, text){
   el.appendChild(line);
   el.dataset.full=((el.dataset.full||'')+' '+text).slice(-8000);
   if(atBottom) el.scrollTop=el.scrollHeight;
-  if(cliente){
-    // acumula lo que dice el Cliente (la dirección suele venir partida en varias frases) y busca en el conjunto
-    dgClientBuf = (dgClientBuf + ' ' + text).slice(-600);
-    trDetectAddress(mergeSpokenDigits(dgClientBuf));
-  }
+  // acumula AMBOS lados (la dirección la puede decir el cliente, o el agente al repetirla) y busca en el conjunto
+  dgClientBuf = (dgClientBuf + ' ' + text).slice(-600);
+  trDetectAddress(mergeSpokenDigits(dgClientBuf));
 }
 
 function dgStop(){
