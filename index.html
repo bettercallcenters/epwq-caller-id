@@ -141,6 +141,7 @@
         <div>
           <div class="lbl">En espera de llamada</div>
           <div class="num" id="incNum">— — —</div>
+          <div id="incMeta" style="font-size:13px;opacity:.92;margin-top:3px"></div>
         </div>
         <div class="sp" id="incActions" style="display:none">
           <button class="btn ghost sm" id="incUsp">🔎 USPhonebook</button>
@@ -719,7 +720,7 @@ $('muteBtn').addEventListener('click', function(){
 
 // Botón: probar la alerta (simula una llamada 5 seg)
 $('testAlert').addEventListener('click', function(){
-  onIncoming('8328658324');
+  onIncoming('5756427634', false, {name:'Edward Frausto'});   // demo: número de Las Cruces + nombre
   setTimeout(callEnded, 5000);
 });
 
@@ -736,7 +737,7 @@ window.addEventListener('message', function(e){
     var call = d.call || {};
     var from = call.from || {};
     var num = from.phoneNumber || from.extensionNumber || '';
-    onIncoming(num);
+    onIncoming(num, false, from);
   }
 
   // Llamada contestada / conectada
@@ -744,7 +745,7 @@ window.addEventListener('message', function(e){
     var call2 = d.call || {};
     if(call2.direction === 'Inbound'){
       var f2 = call2.from || {};
-      onIncoming(f2.phoneNumber || '', true);
+      onIncoming(f2.phoneNumber || '', true, f2);
     }
   }
 
@@ -752,7 +753,23 @@ window.addEventListener('message', function(e){
   if(d.type === 'rc-call-end-notify'){ callEnded(); }
 });
 
-function onIncoming(num, answered){
+/* Ciudad aproximada por código de área (gratis, instantáneo). El área ≠ dónde vive, pero da contexto. */
+var AREACODE = {
+  '915':'El Paso, TX','432':'Midland/Odessa, TX',
+  '575':'Las Cruces, NM','505':'Albuquerque, NM',
+  '210':'San Antonio, TX','726':'San Antonio, TX','512':'Austin, TX','737':'Austin, TX',
+  '214':'Dallas, TX','469':'Dallas, TX','972':'Dallas, TX','817':'Fort Worth, TX','682':'Fort Worth, TX',
+  '713':'Houston, TX','281':'Houston, TX','832':'Houston, TX','346':'Houston, TX',
+  '956':'Laredo/RGV, TX','361':'Corpus Christi, TX','254':'Killeen/Waco, TX','940':'Denton, TX',
+  '806':'Amarillo/Lubbock, TX','325':'Abilene, TX','903':'Tyler, TX','430':'Tyler, TX','409':'Beaumont, TX','979':'Bryan, TX',
+  '602':'Phoenix, AZ','480':'Phoenix, AZ','623':'Phoenix, AZ','520':'Tucson, AZ','928':'Flagstaff, AZ',
+  '213':'Los Angeles, CA','323':'Los Angeles, CA','310':'Los Angeles, CA','818':'Los Angeles, CA','619':'San Diego, CA','714':'Anaheim, CA',
+  '702':'Las Vegas, NV','303':'Denver, CO','720':'Denver, CO','305':'Miami, FL','407':'Orlando, FL','312':'Chicago, IL','212':'New York, NY','718':'New York, NY','404':'Atlanta, GA'
+};
+function areaLoc(num){ var d=digits(num); if(d.length!==10) return ''; return AREACODE[d.slice(0,3)] || ''; }
+
+function onIncoming(num, answered, from){
+  from = from || {};
   var pretty = prettyPhone(num) || 'Número oculto';
   var box = $('incoming');
   box.classList.add('live');
@@ -760,6 +777,15 @@ function onIncoming(num, answered){
   box.querySelector('.lbl').textContent = answered ? 'Llamada en curso' : '📞 ¡Llamada entrante!';
   $('incActions').style.display = num ? 'flex' : 'none';
   if(num){ $('phone').value = pretty; buildMsg(); }
+
+  // Info automática: nombre (RingCentral) + ciudad por código de área
+  var name = (from.name && !/^\+?\d[\d\s()+-]*$/.test(from.name)) ? from.name : '';  // ignora si el "name" es solo el número
+  var loc  = areaLoc(num);
+  var meta = [];
+  if(name) meta.push('👤 ' + name);
+  if(loc)  meta.push('📍 área: ' + loc);
+  $('incMeta').textContent = meta.join('   ·   ');
+
   try{ box.scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
   if(answered){ alertStop(); }        // ya contestó → callar
   else { alertStart(pretty); }        // sonando → sonido + notificación + parpadeo
@@ -769,6 +795,7 @@ function callEnded(){
   var box = $('incoming'); box.classList.remove('live');
   box.querySelector('.lbl').textContent = 'En espera de llamada';
   $('incNum').textContent = '— — —';
+  $('incMeta').textContent = '';
   $('incActions').style.display = 'none';
 }
 function prettyPhone(s){
