@@ -756,6 +756,22 @@ function donaAssessorUrl(hs){
        + '&SitusIDHouseNumber=' + encodeURIComponent(hs.house)
        + '&SitusIDStreetName='  + encodeURIComponent(hs.street);
 }
+// Corre USPhonebook para el número que llama: dentro de la app si hay bot, o abre pestaña si no
+function runUsp(){
+  var ph = $('phone').value;
+  if(!digits(ph) || digits(ph).length!==10){ toast('No caller number yet for USPhonebook'); return; }
+  if(callerLookupUrl()) lookupCaller(ph); else openUsp(ph);
+}
+// Fila de acciones de la tarjeta del dueño: assessor + USPhonebook
+function ownerActionRow(hs, assessorLabel){
+  return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'
+       + '<a class="btn ghost sm" href="'+esc(donaAssessorUrl(hs))+'" target="_blank" rel="noopener">↗ '+assessorLabel+'</a>'
+       + '<button class="btn ghost sm" data-act="usp">🔎 USPhonebook</button>'
+       + '</div>';
+}
+// Delegado: clic en el botón USPhonebook de la tarjeta
+if($('ownerGis')) $('ownerGis').addEventListener('click', function(e){ if(e.target.closest('[data-act="usp"]')) runUsp(); });
+
 function fetchCountyOwner(hs){
   if(!hs || !hs.house || !hs.street) return;
   var cfg = GIS[state.county]; if(!cfg) return;
@@ -773,7 +789,7 @@ function fetchCountyOwner(hs){
     var feats = (j && j.features) || [];
     if(!feats.length){
       if(note){ note.style.display='none'; }
-      if(isDona && gisBox){ gisBox.innerHTML='<div style="color:var(--muted);font-size:14px;margin-bottom:10px">No match in Doña Ana records for <b>'+esc(hs.house+' '+hs.street)+'</b>.</div><a class="btn ghost sm" href="'+esc(donaAssessorUrl(hs))+'" target="_blank" rel="noopener">↗ Try the assessor site</a>'; }
+      if(isDona && gisBox){ gisBox.innerHTML='<div style="color:var(--muted);font-size:14px">No match in Doña Ana records for <b>'+esc(hs.house+' '+hs.street)+'</b>.</div>'+ownerActionRow(hs,'Try the assessor site'); }
       return;
     }
     var a = feats[0].attributes || {};
@@ -785,13 +801,13 @@ function fetchCountyOwner(hs){
       var rows='<div style="font-size:17px;font-weight:800">'+esc(pretty)+'</div>';
       if(situs) rows+='<div style="font-size:14px;margin-top:6px">🏠 '+esc(situs)+(city?', '+esc(city):'')+', NM '+esc(zip)+'</div>';
       if(feats.length>1) rows+='<div style="font-size:12px;color:var(--muted);margin-top:6px">'+feats.length+' parcels match — showing the first; check the assessor for the exact one.</div>';
-      rows+='<a class="btn ghost sm" href="'+esc(donaAssessorUrl(hs))+'" target="_blank" rel="noopener" style="margin-top:12px;display:inline-block">↗ Open assessor (full tax record)</a>';
+      rows+=ownerActionRow(hs,'Open assessor (full tax record)');
       gisBox.innerHTML=rows;
     }
   }).catch(function(){
     if(window.__ownerReq !== token) return;
     if(note){ note.style.display='none'; }
-    if(isDona && gisBox){ gisBox.innerHTML='<div style="color:#b91c1c;font-size:13px;margin-bottom:10px">Couldn\'t reach Doña Ana GIS.</div><a class="btn ghost sm" href="'+esc(donaAssessorUrl(hs))+'" target="_blank" rel="noopener">↗ Open assessor site</a>'; }
+    if(isDona && gisBox){ gisBox.innerHTML='<div style="color:#b91c1c;font-size:13px">Couldn\'t reach Doña Ana GIS.</div>'+ownerActionRow(hs,'Open assessor site'); }
   });
 }
 $('ownerBtn').addEventListener('click', searchOwner);
