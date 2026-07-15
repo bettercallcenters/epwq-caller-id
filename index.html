@@ -237,14 +237,18 @@
         <div class="hintline">Shows the county record <b>right here</b> with the owner — no re-typing. (Doña Ana opens in a tab: it blocks embedding.)</div>
       </div>
 
-      <!-- Recuadro del dueño (EPCAD embebido dentro de la app) -->
+      <!-- Recuadro del dueño: EPCAD embebido; Doña Ana/USPhonebook como lanzador (bloquean iframe) -->
       <div class="field" id="ownerPanel" style="display:none">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
-          <label style="margin:0">🏠 County record — owner</label>
+          <label id="ownerPanelTitle" style="margin:0">🏠 County record — owner</label>
           <a id="ownerPanelOpen" class="btn ghost sm" href="#" target="_blank" rel="noopener" style="margin-left:auto">↗ Open in tab</a>
           <button class="btn ghost sm" id="ownerPanelClose">✕</button>
         </div>
         <iframe id="ownerFrame" style="width:100%;height:430px;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
+        <div id="ownerLaunch" style="display:none;border:1px dashed var(--line);border-radius:12px;background:#f8fafc;padding:22px 18px;text-align:center">
+          <div id="ownerLaunchMsg" style="color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:14px"></div>
+          <a id="ownerLaunchBtn" class="btn" href="#" target="_blank" rel="noopener" style="font-size:15px;display:inline-block">↗ Open <span id="ownerLaunchSite">site</span> in a new tab</a>
+        </div>
       </div>
 
       <!-- Owner name -->
@@ -489,7 +493,8 @@ function uspUrl(s){
 function openUsp(s){
   var u = uspUrl(s);
   if(!u){ toast('Enter a 10-digit phone number'); return; }
-  window.open(u, '_blank', 'noopener');
+  ownerShowLaunch(u, 'USPhonebook', '📞 USPhonebook — reverse phone lookup',
+    'USPhonebook can\'t be shown inside this page (bot protection blocks embedding). It opens in a new tab for this number:<br><b>'+esc(prettyPhone(s))+'</b>');
 }
 $('uspBtn').addEventListener('click', function(){ openUsp($('phone').value); });
 $('incUsp').addEventListener('click', function(){ openUsp($('phone').value); });
@@ -616,25 +621,42 @@ function parseHouseStreet(addr){
   var street = (m ? m[2] : a).replace(ST_SUFFIX,'').trim();
   return { house:house, street:street, clean:((house?house+' ':'')+street).trim() };
 }
-// Muestra el registro del condado con el DUEÑO: EPCAD embebido AQUÍ MISMO; Doña Ana en pestaña (bloquea iframes)
+// Panel del dueño: EPCAD se embebe; Doña Ana/USPhonebook bloquean iframe → lanzador en el MISMO lugar
+function ownerShowEmbed(url, title){
+  $('ownerPanelTitle').textContent = title || '🏠 County record — owner';
+  $('ownerFrame').style.display=''; $('ownerFrame').src = url;
+  $('ownerLaunch').style.display='none';
+  $('ownerPanelOpen').href = url;
+  $('ownerPanel').style.display = '';
+  try{ $('ownerPanel').scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
+}
+function ownerShowLaunch(url, siteName, title, msgHtml){
+  $('ownerPanelTitle').textContent = title;
+  $('ownerFrame').style.display='none'; $('ownerFrame').src='about:blank';
+  $('ownerLaunch').style.display='';
+  $('ownerLaunchSite').textContent = siteName;
+  $('ownerLaunchBtn').href = url;
+  $('ownerLaunchMsg').innerHTML = msgHtml;
+  $('ownerPanelOpen').href = url;
+  $('ownerPanel').style.display = '';
+  try{ $('ownerPanel').scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
+}
 function searchOwner(){
   var addr = (state.addrCompact || $('addr').value || '').trim();
   if(!addr){ toast('Type the address first'); $('addr').focus(); return; }
   var hs = parseHouseStreet(addr);
   if(state.county === 'epcad'){
     var url = 'https://epcad.org/Search?Keywords=' + encodeURIComponent(hs.clean || addr);
-    $('ownerFrame').src = url;
-    $('ownerPanelOpen').href = url;
-    $('ownerPanel').style.display = '';
-    try{ $('ownerPanel').scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
+    ownerShowEmbed(url, '🏠 EPCAD — owner (El Paso, TX)');
   } else {
     var url2 = 'https://assessor.donaanacounty.org/assessor/taxweb/results.jsp?AllTypes=on'
         + '&SitusIDHouseNumber=' + encodeURIComponent(hs.house)
         + '&SitusIDStreetName='  + encodeURIComponent(hs.street);
-    window.open(url2, '_blank', 'noopener');
+    ownerShowLaunch(url2, 'Doña Ana Assessor', '🏠 County record — owner (Doña Ana, NM)',
+      'The Doña Ana assessor can\'t be shown inside this page (their site blocks it and now asks to sign in). It opens in a new tab with the address ready:<br><b>'+esc(hs.clean||addr)+'</b>');
   }
 }
-$('ownerPanelClose').addEventListener('click', function(){ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; });
+$('ownerPanelClose').addEventListener('click', function(){ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; $('ownerLaunch').style.display='none'; });
 $('ownerBtn').addEventListener('click', searchOwner);
 $('owner').addEventListener('input', buildMsg);
 
@@ -1462,10 +1484,9 @@ function dgDisconnect(){
   dgConnected=false;
   try{ if(dgWS){ if(dgWS.readyState===1) dgWS.send(JSON.stringify({type:'CloseStream'})); dgWS.close(); } }catch(e){}
   dgWS=null;
-  var hud=document.getElementById('trHUD'); if(hud){ hud.innerHTML=''; hud.dataset.full=''; hud.dataset.last=''; }
   var sg=document.getElementById('addrSuggest'); if(sg) sg.style.display='none';
-  dgClientBuf=''; trLastAddr='';
-  if(dgArmed) trSetStatus('✅ Armed — waiting for the next call…');
+  // NO se borra el transcript: queda visible para consultar dirección/detalles hasta la SIGUIENTE llamada (dgConnect lo limpia)
+  if(dgArmed) trSetStatus('✅ Call ended — transcript saved. Armed for the next call…');
 }
 
 // DISARM (un clic): apaga todo y libera micrófono + pestaña
@@ -1525,12 +1546,10 @@ function fmtRange(from,to){
 function computeWhen(){
   var val=$('apptDate').value, day='Today';
   if(val){
-    var today=ymd(new Date()), t1=ymd(dateOff(1));
+    var today=ymd(new Date());
     if(val===today) day='Today';
-    else if(val===t1) day='Tomorrow';
-    else { var d=new Date(val+'T00:00:00');
-      day = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+' '
-          + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+d.getDate();
+    else { var d=new Date(val+'T00:00:00');   // cualquier otro día → nombre del día (jueves = Thursday), no "Tomorrow"
+      day = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
     }
   }
   var from=parseInt($('timeFrom').value,10), to=parseInt($('timeTo').value,10);
