@@ -227,7 +227,7 @@
       <!-- Find owner -->
       <div class="field">
         <button class="btn primary wide" id="ownerBtn">🏠 Find owner &nbsp;→&nbsp; <span id="ownerBtnLbl">open EPCAD</span></button>
-        <div class="hintline">Copies the address and opens the official search. Paste with <b>⌘V / Ctrl+V</b> to see the owner.</div>
+        <div class="hintline">Opens the official search <b>already loaded with the address</b> — shows the owner directly, no re-typing.</div>
       </div>
 
       <!-- Owner name -->
@@ -555,17 +555,29 @@ document.addEventListener('click', function(e){ if(!e.target.closest('.field')) 
 /* ============================================================
    BUSCAR DUEÑO (copiar dirección + abrir portal correcto)
 ============================================================ */
-var OWNER_URL = {
-  epcad: 'https://go.epcad.org/search',
-  dona:  'https://assessor.donaanacounty.org/'
-};
+// Parte la dirección en número de casa + nombre de calle (sin sufijo) para los buscadores
+var ST_SUFFIX = /\s+(street|st|avenue|ave|drive|dr|road|rd|boulevard|blvd|lane|ln|circle|cir|court|ct|place|pl|way|highway|hwy|parkway|pkwy|terrace|ter|trail|trl|loop|cove|cv|run|pass|point|pt|expressway|expy)\.?$/i;
+function parseHouseStreet(addr){
+  var a = String(addr||'').split(',')[0].trim();          // quita ciudad/estado/zip
+  var m = a.match(/^\s*(\d+)\s+(.+)$/);
+  var house  = m ? m[1] : '';
+  var street = (m ? m[2] : a).replace(ST_SUFFIX,'').trim();
+  return { house:house, street:street, clean:((house?house+' ':'')+street).trim() };
+}
+// Abre el buscador oficial YA con la dirección buscada → muestra al dueño directo (deep-link, sin re-escribir)
 function searchOwner(){
   var addr = (state.addrCompact || $('addr').value || '').trim();
   if(!addr){ toast('Type the address first'); $('addr').focus(); return; }
-  copy(addr).then(function(){
-    toast('Address copied — paste with ⌘V / Ctrl+V in the search');
-  });
-  window.open(OWNER_URL[state.county], '_blank', 'noopener');
+  var hs = parseHouseStreet(addr);
+  var url;
+  if(state.county === 'epcad'){
+    url = 'https://epcad.org/Search?Keywords=' + encodeURIComponent(hs.clean || addr);
+  } else {
+    url = 'https://assessor.donaanacounty.org/assessor/taxweb/results.jsp?AllTypes=on'
+        + '&SitusIDHouseNumber=' + encodeURIComponent(hs.house)
+        + '&SitusIDStreetName='  + encodeURIComponent(hs.street);
+  }
+  window.open(url, '_blank', 'noopener');
 }
 $('ownerBtn').addEventListener('click', searchOwner);
 $('owner').addEventListener('input', buildMsg);
