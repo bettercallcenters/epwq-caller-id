@@ -347,11 +347,23 @@ function toast(msg){
 /* ============================================================
    CONDADO (EPCAD / DOÑA ANA)
 ============================================================ */
+function setCounty(c){
+  if(c!=='epcad' && c!=='dona') return;
+  state.county = c;
+  [].forEach.call($('countySeg').querySelectorAll('button'), function(x){ x.classList.toggle('on', x.dataset.c===c); });
+  $('ownerBtnLbl').textContent = c==='epcad' ? 'abrir EPCAD' : 'abrir Doña Ana';
+}
+// Auto-rutea al portal correcto según el estado de la dirección (TX → EPCAD, NM → Doña Ana)
+function autoRoute(stateStr){
+  if(!stateStr) return;
+  var s = ('' + stateStr).toLowerCase();
+  var c = (s==='tx' || s.indexOf('texas')>=0) ? 'epcad'
+        : (s==='nm' || s.indexOf('new mexico')>=0) ? 'dona' : '';
+  if(c && c!==state.county){ setCounty(c); toast(c==='dona' ? '📍 New Mexico → Doña Ana' : '📍 Texas → EPCAD'); }
+}
 $('countySeg').addEventListener('click', function(e){
   var b = e.target.closest('button'); if(!b) return;
-  state.county = b.dataset.c;
-  [].forEach.call(this.querySelectorAll('button'), function(x){ x.classList.toggle('on', x===b); });
-  $('ownerBtnLbl').textContent = state.county==='epcad' ? 'abrir EPCAD' : 'abrir Doña Ana';
+  setCounty(b.dataset.c);
   clearAC();
 });
 
@@ -404,12 +416,13 @@ function pickAC(i){
   // --- Sugerencia de Google: pedir detalle para sacar número + calle + coordenadas ---
   if(it.isGoogle){
     gPlaces.getDetails({placeId:it.placeId, fields:['address_components','formatted_address','geometry']}, function(pl){
-      var compact = it.main, full = (pl && pl.formatted_address) || (it.main+' '+it.sub);
+      var compact = it.main, full = (pl && pl.formatted_address) || (it.main+' '+it.sub), st='';
       if(pl && pl.address_components){
         var num='', route='';
         pl.address_components.forEach(function(comp){
           if(comp.types.indexOf('street_number')>=0) num=comp.long_name;
           if(comp.types.indexOf('route')>=0)         route=comp.long_name;
+          if(comp.types.indexOf('administrative_area_level_1')>=0) st=comp.short_name;  // 'TX' / 'NM'
         });
         if(num||route) compact=(num+' '+route).trim();
       }
@@ -417,6 +430,7 @@ function pickAC(i){
       state.addrCompact = compact;
       var loc = pl && pl.geometry && pl.geometry.location;
       if(loc) setLatLng(loc.lat(), loc.lng());
+      autoRoute(st);
       clearAC(); buildMsg();
     });
     return;
@@ -427,6 +441,7 @@ function pickAC(i){
   $('addr').value = it.compact ? (it.compact + (it.sub ? ', ' + it.sub : '')) : it.full;
   state.addrCompact = it.compact || it.full;
   if(it.lat && it.lon) setLatLng(it.lat, it.lon);
+  autoRoute(it.stateName);
   clearAC(); buildMsg();
 }
 
@@ -453,7 +468,7 @@ function queryNominatim(q){
         var compact = compactFrom(a);
         var main = compact || (r.display_name||'').split(',').slice(0,2).join(',');
         var sub = [a.city||a.town||a.village||a.hamlet, a.state, a.postcode].filter(Boolean).join(', ');
-        return { full: r.display_name, compact: compact, main: main, sub: sub, lat: r.lat, lon: r.lon };
+        return { full: r.display_name, compact: compact, main: main, sub: sub, lat: r.lat, lon: r.lon, stateName: a.state };
       });
       renderAC(acItems);
     })
