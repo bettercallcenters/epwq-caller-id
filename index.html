@@ -115,6 +115,8 @@
   .footnote{max-width:1180px;margin:6px auto 40px;padding:0 16px;font-size:12px;color:var(--muted)}
   a.link{color:var(--brand);font-weight:600;text-decoration:none}
   a.link:hover{text-decoration:underline}
+  .meterTrack{height:9px;background:#e2e8f0;border-radius:5px;overflow:hidden;margin-top:3px}
+  .meterFill{height:100%;width:0;background:#16a34a;transition:width .08s linear}
 </style>
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
@@ -189,13 +191,18 @@
       <!-- ===== LIVE TRANSCRIPT ===== -->
       <div id="trBlock" style="margin:0 0 16px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--soft)">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-          <button class="btn primary sm" id="trBtn">🎧 Start transcript</button>
+          <button class="btn primary sm" id="trBtn">🎧 Arm auto-transcript</button>
           <span class="badge" style="background:#fef3c7;color:#b45309">beta</span>
           <label style="font-size:12px;color:var(--muted);white-space:nowrap">Your name:</label>
           <input type="text" id="agentName" placeholder="Hector" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px" />
           <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Clear</button>
         </div>
-        <div class="hintline" id="trStatus" style="margin:0 0 8px">On start: <b>allow the microphone</b> and <b>share this tab's audio</b>. It separates Agent/Client and detects the address.</div>
+        <div class="hintline" id="trStatus" style="margin:0 0 8px"><b>Arm once</b> (allow mic + share this tab's audio) → it auto-transcribes every call, separating Agent/Client.</div>
+        <!-- Medidor de micrófono/llamada: confirma que sí capta el audio -->
+        <div id="dgMeters" style="display:none;gap:14px;margin:0 0 8px;font-size:12px;color:var(--muted)">
+          <div style="flex:1">🎤 You (mic)<div class="meterTrack"><div id="meterMic" class="meterFill"></div></div></div>
+          <div style="flex:1">📞 Call (client)<div class="meterTrack"><div id="meterCall" class="meterFill"></div></div></div>
+        </div>
         <div id="trHUD" style="height:240px;min-height:120px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;font-size:15px;line-height:1.6"></div>
         <div class="hintline" style="margin-top:4px">Scroll up/down to review the conversation, and drag the corner ↘ to make it bigger.</div>
       </div>
@@ -238,8 +245,17 @@
     </div>
   </div>
 
-  <!-- ================= COLUMNA DERECHA: CITA + MENSAJE ================= -->
+  <!-- ================= COLUMNA DERECHA: SOFTPHONE + CITA + MENSAJE ================= -->
   <div style="display:flex;flex-direction:column;gap:16px">
+
+    <!-- Softphone de RingCentral EMBEBIDO y grande -->
+    <div class="card">
+      <h2>📞 RingCentral softphone</h2>
+      <div class="body" style="padding:8px">
+        <div id="rcMount" style="width:100%;height:620px;background:#f1f5f9;border-radius:12px"></div>
+      </div>
+    </div>
+
     <div class="card">
       <h2><span class="step">2</span> Appointment Details</h2>
       <div class="body">
@@ -280,6 +296,16 @@
               <span class="chip" data-role="renter">renter</span>
             </div>
           </div>
+        </div>
+
+        <div class="field">
+          <label>Hot lead</label>
+          <button class="chip" id="hotLead" style="font-size:14px;padding:8px 14px">🔥 Mark as HOT LEAD</button>
+        </div>
+
+        <div class="field">
+          <label>Notes</label>
+          <textarea id="notes" placeholder="Extra notes for the appointment…" style="min-height:60px"></textarea>
         </div>
       </div>
     </div>
@@ -339,6 +365,7 @@ var state = {
   county: 'epcad',           // 'epcad' (El Paso TX) | 'dona' (Doña Ana NM)
   lang: 'Spanish',
   role: 'owner',
+  hotLead: false,
   addrCompact: '',           // "5513 Edinburg" para el mensaje
 };
 
@@ -614,14 +641,26 @@ function buildMsg(){
   var when  = computeWhen();
   var phone = digits($('phone').value);
   var line4 = state.lang + '/ ' + state.role;
+  var notes = ($('notes') ? $('notes').value : '').trim();
   var parts = [];
+  if(state.hotLead) parts.push('🔥 HOT LEAD');   // arriba para que resalte
   if(name)  parts.push(name);
   if(addr)  parts.push(addr);
   if(when)  parts.push(when);
   parts.push(line4);
   if(phone) parts.push(phone);
+  if(notes) parts.push(notes);
   $('msg').textContent = parts.join('\n');
 }
+
+// Botón 🔥 Hot lead (agrega "🔥 HOT LEAD" al mensaje)
+$('hotLead').addEventListener('click', function(){
+  state.hotLead = !state.hotLead;
+  this.classList.toggle('on', state.hotLead);
+  this.textContent = state.hotLead ? '🔥 HOT LEAD ✓' : '🔥 Mark as HOT LEAD';
+  buildMsg();
+});
+$('notes').addEventListener('input', buildMsg);
 
 /* ============================================================
    COPIAR / SMS
@@ -795,17 +834,21 @@ function setLatLng(lat,lng){
 var RC_CLIENT_ID = '';
 
 (function loadRC(){
-  var s = document.createElement('script');
-  var base = 'https://apps.ringcentral.com/integration/ringcentral-embeddable/latest/adapter.js';
+  // Softphone EMBEBIDO y grande (iframe app.html) en vez del widget flotante chico
+  var base = 'https://apps.ringcentral.com/integration/ringcentral-embeddable/latest/app.html';
   var params = 'defaultCallWith=browser';   // contestar la llamada DENTRO de la app (WebRTC)
   if(RC_CLIENT_ID){
     params += '&clientId=' + encodeURIComponent(RC_CLIENT_ID)
             + '&appServer=https://platform.ringcentral.com'
             + '&redirectUri=' + encodeURIComponent('https://apps.ringcentral.com/integration/ringcentral-embeddable/latest/redirect.html');
   }
-  s.src = base + '?' + params;
-  var first = document.getElementsByTagName('script')[0];
-  first.parentNode.insertBefore(s, first);
+  var mount = document.getElementById('rcMount'); if(!mount) return;
+  var ifr = document.createElement('iframe');
+  ifr.id = 'rc-widget-adapter-frame';
+  ifr.allow = 'autoplay; microphone';
+  ifr.style.cssText = 'width:100%;height:100%;border:0;border-radius:12px;display:block';
+  ifr.src = base + '?' + params;
+  mount.appendChild(ifr);
 })();
 
 /* ============================================================
@@ -953,6 +996,7 @@ window.addEventListener('message', function(e){
     };
     if(from.phoneNumber || from.extensionNumber || from.name) window.__lastFrom = from;
     onIncoming(from.phoneNumber || from.extensionNumber || '', st === 'answered', from);
+    if(st === 'answered'){ callIsActive = true; if(dgArmed) dgConnect(); }   // AUTO-transcript si está armado
   }
 
   // Llamada terminada / colgada / rechazada
@@ -1007,8 +1051,9 @@ function callEnded(){
 // Al terminar la llamada: DETIENE el transcript por completo y limpia (no puede seguir corriendo)
 function stopTranscriptOnCallEnd(){
   try{
-    if(typeof dgRunning!=='undefined' && dgRunning) dgStop();
-    else if(typeof trRunning!=='undefined' && trRunning) trStop();
+    callIsActive = false;
+    if(typeof dgArmed!=='undefined' && dgArmed){ dgDisconnect(); return; }  // deja ARMADO para la siguiente llamada (no re-compartir)
+    if(typeof trRunning!=='undefined' && trRunning) trStop();
     var hud=document.getElementById('trHUD');
     if(hud){ hud.innerHTML=''; hud.dataset.full=''; hud.dataset.last=''; }
     var sg=document.getElementById('addrSuggest'); if(sg) sg.style.display='none';
@@ -1035,7 +1080,7 @@ function trSetStatus(t){ $('trStatus').innerHTML = t; }
 // Si está puesta → usa Deepgram (calidad, quién habla). Si se vacía → usa Whisper gratis.
 var DEEPGRAM_KEY_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/dg-key';
 $('trBtn').addEventListener('click', function(){
-  if(DEEPGRAM_KEY_URL){ dgRunning ? dgStop() : dgStart(); }
+  if(DEEPGRAM_KEY_URL){ dgArmed ? dgDisarm() : dgArm(); }
   else { trRunning ? trStop() : trStart(); }
 });
 
@@ -1202,8 +1247,9 @@ function trStop(){
    DEEPGRAM en vivo — 🎧 micrófono (Agente) + 📞 pestaña (Cliente)
    en 2 canales → Deepgram separa quién habla, cada palabra.
 ============================================================ */
-var dgWS=null, dgCtx=null, dgProc=null, dgMicStream=null, dgTabStream=null, dgRunning=false;
-var dgEnergy=[0,0], dgWarnTimer=null, dgClientBuf='';
+var dgWS=null, dgCtx=null, dgProc=null, dgMicStream=null, dgTabStream=null;
+var dgArmed=false, dgConnected=false, callIsActive=false;
+var dgLevel=[0,0], dgMeterTimer=null, dgClientBuf='';
 
 // Nombre del agente (Héctor / Guillermo / Divine) — se guarda en este navegador
 var AGENT_NAME_KEY='epwq_agent_name';
@@ -1220,26 +1266,20 @@ $('trClear').addEventListener('click', function(){
 
 function clamp16(f){ var s=Math.max(-1,Math.min(1,f)); return s<0 ? s*0x8000 : s*0x7FFF; }
 
-async function dgStart(){
+// ARM (un clic): consigue micrófono + audio de la pestaña una vez. Luego AUTO-transcribe cada llamada.
+async function dgArm(){
   $('trBtn').disabled=true;
   try{
-    trSetStatus('⏳ Connecting…');
-    // 1) key temporal desde tu Supabase (server-side)
-    var kd = await fetch(DEEPGRAM_KEY_URL).then(function(r){ return r.json(); });
-    if(!kd || !kd.key) throw new Error('Could not get the key (Supabase)');
-
-    // 2) micrófono (Agente) + audio de la pestaña (Cliente)
+    trSetStatus('⏳ Getting microphone + tab audio…');
     dgMicStream = await navigator.mediaDevices.getUserMedia({ audio:true });
     dgTabStream = await navigator.mediaDevices.getDisplayMedia({
-      video:true, audio:true,
-      preferCurrentTab:true,          // pide directo ESTA pestaña (donde está la llamada), sin listar las demás
-      selfBrowserSurface:'include'
+      video:true, audio:true, preferCurrentTab:true, selfBrowserSurface:'include'
     });
-    if(!dgTabStream.getAudioTracks().length){ toast('Check “Share tab audio”'); return dgStop(); }
+    if(!dgTabStream.getAudioTracks().length){ toast('Check “Share tab audio”'); return dgDisarm(); }
     dgTabStream.getVideoTracks().forEach(function(t){ t.stop(); });
-    dgTabStream.getAudioTracks()[0].onended = function(){ dgStop(); };
+    dgTabStream.getAudioTracks()[0].onended = function(){ dgDisarm(); };   // si deja de compartir → se desarma
 
-    // 3) mezcla a 2 canales: canal 0 = Agente (mic), canal 1 = Cliente (pestaña)
+    // mezcla a 2 canales: 0 = Agente (mic), 1 = Cliente (pestaña) — se queda vivo entre llamadas
     dgCtx = new (window.AudioContext||window.webkitAudioContext)({ sampleRate:16000 });
     if(dgCtx.state==='suspended') await dgCtx.resume();
     var micSrc = dgCtx.createMediaStreamSource(dgMicStream);
@@ -1250,56 +1290,89 @@ async function dgStart(){
     dgProc = dgCtx.createScriptProcessor(4096, 2, 2);
     merger.connect(dgProc);
     var sink = dgCtx.createGain(); sink.gain.value=0; dgProc.connect(sink); sink.connect(dgCtx.destination);
+    dgProc.onaudioprocess = function(e){
+      var l=e.inputBuffer.getChannelData(0), r=e.inputBuffer.getChannelData(1);
+      var pl=0,pr=0;
+      for(var i=0;i<l.length;i++){ var al=l[i]<0?-l[i]:l[i]; if(al>pl)pl=al; var ar=r[i]<0?-r[i]:r[i]; if(ar>pr)pr=ar; }
+      dgLevel[0]=pl; dgLevel[1]=pr;   // niveles para el medidor de micrófono
+      if(dgWS && dgWS.readyState===1){
+        var pcm=new Int16Array(l.length*2);
+        for(var j=0;j<l.length;j++){ pcm[j*2]=clamp16(l[j]); pcm[j*2+1]=clamp16(r[j]); }
+        dgWS.send(pcm.buffer);
+      }
+    };
 
-    // 4) WebSocket a Deepgram (multichannel = separa Agente/Cliente)
+    dgArmed=true;
+    startMeters();
+    $('trBtn').textContent='⏹ Turn off auto-transcript'; $('trBtn').disabled=false;
+    trSetStatus('✅ Armed — transcribes automatically on each call. 🎤 speak: the bar moves.');
+    if(callIsActive) dgConnect();   // si ya hay una llamada, arranca de una vez
+  }catch(err){
+    toast('Could not start'); trSetStatus('Error: ' + (err && err.message || err)); dgDisarm();
+  }
+}
+
+// CONNECT (automático al empezar la llamada): abre Deepgram y transcribe usando los streams ya armados
+async function dgConnect(){
+  if(!dgArmed || dgConnected || !dgCtx) return;
+  dgConnected=true;
+  try{
+    var kd = await fetch(DEEPGRAM_KEY_URL).then(function(r){ return r.json(); });
+    if(!kd || !kd.key) throw new Error('key');
     var qs = 'model=nova-3&language=multi&endpointing=100&multichannel=true&channels=2&sample_rate=16000&encoding=linear16&punctuate=true&smart_format=true&numerals=true&interim_results=false';
     dgWS = new WebSocket('wss://api.deepgram.com/v1/listen?'+qs, ['token', kd.key]);
     dgWS.binaryType='arraybuffer';
     dgWS.onopen  = function(){ trSetStatus('🎧 Listening… (Agent + Client live)'); };
     dgWS.onerror = function(){ trSetStatus('⚠️ Deepgram connection error'); };
-    dgWS.onclose = function(){ if(dgRunning) trSetStatus('Connection closed.'); };
     dgWS.onmessage = function(m){
       var d; try{ d=JSON.parse(m.data); }catch(e){ return; }
       if(!d.channel || !d.channel.alternatives) return;
       var text = (d.channel.alternatives[0] && d.channel.alternatives[0].transcript || '').trim();
       if(!text) return;
-      var ch = (d.channel_index && d.channel_index[0]) || 0;   // 0=Agente, 1=Cliente
+      var ch = (d.channel_index && d.channel_index[0]) || 0;
       dgAppend(ch, text);
     };
-
-    dgEnergy=[0,0];
-    dgProc.onaudioprocess = function(e){
-      var l=e.inputBuffer.getChannelData(0), r=e.inputBuffer.getChannelData(1);
-      for(var i=0;i<l.length;i+=8){ dgEnergy[0]+=Math.abs(l[i]); dgEnergy[1]+=Math.abs(r[i]); }   // mide volumen de cada canal
-      if(!dgWS || dgWS.readyState!==1) return;
-      var pcm=new Int16Array(l.length*2);
-      for(var i2=0;i2<l.length;i2++){ pcm[i2*2]=clamp16(l[i2]); pcm[i2*2+1]=clamp16(r[i2]); }
-      dgWS.send(pcm.buffer);
-    };
-
-    dgRunning=true; trLastAddr=''; dgClientBuf='';
+    trLastAddr=''; dgClientBuf='';
     $('trHUD').innerHTML=''; $('trHUD').dataset.full='';
-    $('trBtn').textContent='⏹ Stop transcript'; $('trBtn').disabled=false;
-    trSetStatus('🎧 Listening… (Agent + Client live)');
-
-    // A los ~7s: si el canal del Cliente sigue casi mudo comparado al mic, avisa qué revisar
-    clearTimeout(dgWarnTimer);
-    dgWarnTimer = setTimeout(function(){
-      if(!dgRunning) return;
-      if(dgEnergy[1] < dgEnergy[0]*0.05){
-        trSetStatus('⚠️ Not capturing the <b>call</b> audio (Client channel). '
-          + 'Stop and start again, and check <b>"Share tab audio"</b>. '
-          + '<button id="trRetryShare" class="btn ghost sm" style="margin-left:6px">🔁 Retry</button>');
-        var rb=document.getElementById('trRetryShare');
-        if(rb) rb.onclick=function(){ dgStop(); dgStart(); };
-      }
-    }, 7000);
-  }catch(err){
-    toast('Could not start the transcript');
-    trSetStatus('Error: ' + (err && err.message || err));
-    dgStop();
-  }
+  }catch(e){ dgConnected=false; trSetStatus('⚠️ Could not connect Deepgram'); }
 }
+
+// DISCONNECT (automático al terminar la llamada): cierra Deepgram y limpia, PERO deja armado (sin re-compartir)
+function dgDisconnect(){
+  dgConnected=false;
+  try{ if(dgWS){ if(dgWS.readyState===1) dgWS.send(JSON.stringify({type:'CloseStream'})); dgWS.close(); } }catch(e){}
+  dgWS=null;
+  var hud=document.getElementById('trHUD'); if(hud){ hud.innerHTML=''; hud.dataset.full=''; hud.dataset.last=''; }
+  var sg=document.getElementById('addrSuggest'); if(sg) sg.style.display='none';
+  dgClientBuf=''; trLastAddr='';
+  if(dgArmed) trSetStatus('✅ Armed — waiting for the next call…');
+}
+
+// DISARM (un clic): apaga todo y libera micrófono + pestaña
+function dgDisarm(){
+  dgArmed=false; dgConnected=false;
+  stopMeters();
+  try{ if(dgWS){ if(dgWS.readyState===1) dgWS.send(JSON.stringify({type:'CloseStream'})); dgWS.close(); } }catch(e){}
+  try{ if(dgProc){ dgProc.disconnect(); dgProc.onaudioprocess=null; } }catch(e){}
+  try{ if(dgCtx && dgCtx.state!=='closed') dgCtx.close(); }catch(e){}
+  try{ if(dgMicStream) dgMicStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
+  try{ if(dgTabStream) dgTabStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
+  dgWS=dgProc=dgCtx=dgMicStream=dgTabStream=null;
+  $('trBtn').textContent='🎧 Arm auto-transcript'; $('trBtn').disabled=false;
+  trSetStatus('Off. Click once to arm — then it auto-transcribes every call.');
+}
+
+// Medidor de micrófono / llamada (para ver que sí capta el audio)
+function startMeters(){
+  var m=document.getElementById('dgMeters'); if(m) m.style.display='flex';
+  clearInterval(dgMeterTimer);
+  dgMeterTimer=setInterval(function(){
+    var a=document.getElementById('meterMic'), b=document.getElementById('meterCall');
+    if(a) a.style.width=Math.min(100, dgLevel[0]*160)+'%';
+    if(b) b.style.width=Math.min(100, dgLevel[1]*160)+'%';
+  }, 120);
+}
+function stopMeters(){ clearInterval(dgMeterTimer); dgMeterTimer=null; var m=document.getElementById('dgMeters'); if(m) m.style.display='none'; }
 
 function dgAppend(ch, text){
   var el=$('trHUD');
@@ -1315,19 +1388,6 @@ function dgAppend(ch, text){
   // acumula AMBOS lados (la dirección la puede decir el cliente, o el agente al repetirla) y busca en el conjunto
   dgClientBuf = (dgClientBuf + ' ' + text).slice(-600);
   trDetectAddress(mergeSpokenDigits(dgClientBuf));
-}
-
-function dgStop(){
-  dgRunning=false;
-  clearTimeout(dgWarnTimer);
-  try{ if(dgWS){ if(dgWS.readyState===1) dgWS.send(JSON.stringify({type:'CloseStream'})); dgWS.close(); } }catch(e){}
-  try{ if(dgProc){ dgProc.disconnect(); dgProc.onaudioprocess=null; } }catch(e){}
-  try{ if(dgCtx && dgCtx.state!=='closed') dgCtx.close(); }catch(e){}
-  try{ if(dgMicStream) dgMicStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
-  try{ if(dgTabStream) dgTabStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
-  dgWS=dgProc=dgCtx=dgMicStream=dgTabStream=null;
-  $('trBtn').textContent='🎧 Start transcript'; $('trBtn').disabled=false;
-  trSetStatus('Stopped. To start: allow the microphone + share this tab\'s audio.');
 }
 
 /* ============================================================
