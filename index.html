@@ -55,6 +55,13 @@
   label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 5px;
         text-transform:uppercase;letter-spacing:.4px}
   .field{margin-bottom:14px;position:relative}
+  /* Modo compacto (Appointment Details): todo a la vista sin scroll, para agendar EN VIVO */
+  .compact .field{margin-bottom:9px}
+  .compact label{font-size:11px;margin:0 0 4px}
+  .compact .chip{padding:5px 10px;font-size:12px}
+  .compact .seg button{padding:6px 9px;font-size:12px}
+  .compact input[type=date],.compact select.sel{padding:8px 10px;font-size:14px}
+  .compact textarea{min-height:38px;padding:8px 10px;font-size:13px}
   input[type=text],textarea{width:100%;padding:11px 12px;border:1px solid var(--line);border-radius:10px;
         font-size:15px;color:var(--ink);background:#fff;outline:none;transition:border .15s,box-shadow .15s}
   input[type=text]:focus,textarea:focus{border-color:var(--brand2);box-shadow:0 0 0 3px rgba(14,165,233,.15)}
@@ -288,69 +295,62 @@
       </div>
     </div>
 
+    <!-- El MENSAJE arriba (es lo que se copia al grupo — siempre a la vista) -->
     <div class="card">
-      <h2><span class="step">2</span> Appointment Details</h2>
-      <div class="body">
-        <div class="field">
-          <label>When? · Day (calendar)</label>
-          <input type="date" id="apptDate" style="width:100%" />
-          <div class="chips" style="margin-top:8px">
-            <span class="chip" data-day="0">Today</span>
-            <span class="chip on" data-day="1">Tomorrow</span>
-          </div>
-        </div>
-        <div class="field">
-          <label>Time</label>
-          <div class="seg" id="timeMode" style="margin-bottom:8px">
-            <button data-tm="range" class="on">Between (from…to…)</button>
-            <button data-tm="exact">Fixed time</button>
-          </div>
-          <div style="display:flex;align-items:center;gap:8px">
-            <select id="timeFrom" class="sel" style="flex:1"></select>
-            <span id="timeSep" style="color:var(--muted);flex:0 0 auto;font-weight:600">to</span>
-            <select id="timeTo" class="sel" style="flex:1"></select>
-          </div>
-        </div>
-
-        <div class="row">
-          <div class="field">
-            <label>Language</label>
-            <div class="chips" id="langChips">
-              <span class="chip on" data-lang="Spanish">Spanish</span>
-              <span class="chip" data-lang="English">English</span>
-              <span class="chip" data-lang="Bilingual">Bilingual</span>
-            </div>
-          </div>
-          <div class="field">
-            <label>Role</label>
-            <div class="chips" id="roleChips">
-              <span class="chip on" data-role="owner">owner</span>
-              <span class="chip" data-role="renter">renter</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="field">
-          <label>Hot lead</label>
-          <button class="chip" id="hotLead" style="font-size:14px;padding:8px 14px">🔥 Mark as HOT LEAD</button>
-        </div>
-
-        <div class="field">
-          <label>Notes</label>
-          <textarea id="notes" placeholder="Extra notes for the appointment…" style="min-height:60px"></textarea>
+      <h2><span class="step">2</span> Appointment Message (FWD)</h2>
+      <div class="body" style="padding:12px 14px">
+        <div class="msgbox" id="msg"></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary" id="copyMsg">📋 Copy message</button>
+          <button class="btn ghost" id="smsMsg">💬 Prefill SMS</button>
         </div>
       </div>
     </div>
 
+    <!-- Detalles COMPACTOS: todo visible sin scroll, ajustes rápidos durante la llamada -->
     <div class="card">
-      <h2><span class="step">3</span> Appointment Message (FWD)</h2>
-      <div class="body">
-        <div class="msgbox" id="msg"></div>
-        <div class="row" style="margin-top:12px">
-          <button class="btn primary" id="copyMsg">📋 Copy message</button>
-          <button class="btn ghost" id="smsMsg">💬 Prefill SMS in RingCentral</button>
+      <h2><span class="step">3</span> Appointment Details</h2>
+      <div class="body compact" style="padding:12px 14px">
+        <div class="field">
+          <label>Day</label>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+            <span class="chip" data-day="0">Today</span>
+            <span class="chip on" data-day="1">Tomorrow</span>
+            <input type="date" id="apptDate" style="flex:1;min-width:130px" />
+          </div>
         </div>
-        <div class="hintline">Copy and paste it in the WhatsApp group, or prefill the SMS in RingCentral (you press “send”).</div>
+        <div class="field">
+          <label>Time</label>
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
+            <div class="seg" id="timeMode">
+              <button data-tm="range" class="on">Between</button>
+              <button data-tm="exact">Fixed</button>
+            </div>
+            <select id="timeFrom" class="sel" style="flex:1;min-width:78px"></select>
+            <span id="timeSep" style="color:var(--muted);flex:0 0 auto;font-weight:600;font-size:13px">to</span>
+            <select id="timeTo" class="sel" style="flex:1;min-width:78px"></select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Language · Role · Hot lead</label>
+          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+            <span class="chips" id="langChips" style="display:contents">
+              <span class="chip on" data-lang="Spanish">Spanish</span>
+              <span class="chip" data-lang="English">English</span>
+              <span class="chip" data-lang="Bilingual">Bilingual</span>
+            </span>
+            <span style="color:var(--line)">|</span>
+            <span class="chips" id="roleChips" style="display:contents">
+              <span class="chip on" data-role="owner">owner</span>
+              <span class="chip" data-role="renter">renter</span>
+            </span>
+            <span style="color:var(--line)">|</span>
+            <button class="chip" id="hotLead">🔥 Mark as HOT LEAD</button>
+          </div>
+        </div>
+        <div class="field" style="margin-bottom:0">
+          <textarea id="notes" placeholder="Notes for the appointment…"></textarea>
+        </div>
       </div>
     </div>
 
