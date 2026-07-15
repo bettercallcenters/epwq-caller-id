@@ -155,6 +155,17 @@
         <button class="btn ghost sm" id="testAlert">▶︎ Probar alerta</button>
       </div>
 
+      <!-- ===== TRANSCRIPT EN VIVO (experimento, arriba/debajo de la llamada) ===== -->
+      <div id="trBlock" style="margin:0 0 16px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--soft)">
+        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+          <button class="btn primary sm" id="trBtn">🎧 Iniciar transcript</button>
+          <span class="badge" style="background:#fef3c7;color:#b45309">experimento</span>
+          <span class="hintline" id="trStatus" style="margin:0;flex:1;min-width:160px">Comparte el audio de <b>esta pestaña</b>. Al oír una dirección te la sugiere.</span>
+        </div>
+        <div id="trSuggest" style="display:none;margin-bottom:8px"></div>
+        <div id="trHUD" style="min-height:64px;max-height:170px;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:12px;font-size:14px;line-height:1.5"></div>
+      </div>
+
       <!-- Condado -->
       <div class="field">
         <label>¿De dónde viene la llamada?</label>
@@ -261,18 +272,6 @@
     </div>
   </div>
 
-  <!-- ===== TRANSCRIPT EN VIVO (experimento, Whisper gratis) ===== -->
-  <div class="card" id="trCard" style="grid-column:1/-1">
-    <h2>🎧 Transcript en vivo <span style="text-transform:none;font-weight:600;color:var(--warn);letter-spacing:0">· experimento (Whisper gratis)</span></h2>
-    <div class="body">
-      <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-        <button class="btn primary" id="trBtn">🎧 Iniciar transcript</button>
-        <span class="hintline" id="trStatus" style="margin:0;flex:1;min-width:220px">Al iniciar, elige <b>compartir esta pestaña</b> y marca <b>“Compartir audio de la pestaña”</b>. La app detecta la dirección hablada y la rutea sola a EPCAD/Doña Ana.</span>
-      </div>
-      <div id="trHUD" style="min-height:90px;max-height:240px;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:12px;padding:14px;font-size:15px;line-height:1.6"></div>
-      <div class="hintline">Experimento: la primera vez baja el modelo de voz (~1 min). Va con unos segundos de retraso y la precisión con español/inglés + ruido es regular.</div>
-    </div>
-  </div>
 </div>
 
 <div class="footnote">
@@ -514,14 +513,15 @@ var OWNER_URL = {
   epcad: 'https://go.epcad.org/search',
   dona:  'https://assessor.donaanacounty.org/'
 };
-$('ownerBtn').addEventListener('click', function(){
+function searchOwner(){
   var addr = (state.addrCompact || $('addr').value || '').trim();
   if(!addr){ toast('Escribe primero la dirección'); $('addr').focus(); return; }
   copy(addr).then(function(){
     toast('Dirección copiada — pega con ⌘V / Ctrl+V en el buscador');
   });
   window.open(OWNER_URL[state.county], '_blank', 'noopener');
-});
+}
+$('ownerBtn').addEventListener('click', searchOwner);
 $('owner').addEventListener('input', buildMsg);
 
 /* ============================================================
@@ -535,6 +535,11 @@ document.addEventListener('click', function(e){
   if(c.dataset.role){ state.role=c.dataset.role; setOn('roleChips',c); buildMsg(); }
 });
 function setOn(group,el){ [].forEach.call($(group).querySelectorAll('.chip'), function(x){ x.classList.toggle('on', x===el); }); }
+function setRole(r){
+  state.role = r;
+  [].forEach.call($('roleChips').querySelectorAll('.chip'), function(x){ x.classList.toggle('on', x.dataset.role===r); });
+  buildMsg();
+}
 $('when').addEventListener('input', buildMsg);
 
 /* ============================================================
@@ -904,17 +909,30 @@ function trAppend(text){
 }
 
 var TR_ADDR_RE=/\b(\d{2,6})\s+([A-Za-z0-9.'’-]+(?:\s+[A-Za-z0-9.'’-]+){0,3})\s+(street|st|avenue|ave|drive|dr|road|rd|boulevard|blvd|lane|ln|circle|cir|court|ct|place|pl|way|highway|hwy|parkway|pkwy|calle|avenida|camino)\b/i;
+var trSuggestAddr='', trResolvedCompact='';
 function trDetectAddress(full){
   var m = full.match(TR_ADDR_RE); if(!m) return;
   var addr = (m[1]+' '+m[2]+' '+m[3]).replace(/\s+/g,' ').trim();
   if(addr.toLowerCase()===trLastAddr.toLowerCase()) return;
   trLastAddr=addr;
-  $('addr').value=addr; state.addrCompact=addr; buildMsg();
-  toast('📍 Dirección detectada: '+addr);
-  trGeocode(addr);
+  trShowSuggest(addr);   // SUGIERE (no llena) — el agente confirma con el botón
+  trResolve(addr);       // en 2° plano: resuelve estado+coords → al confirmar ya está el condado correcto
 }
-// Resuelve la dirección hablada usando Places (autorizado en la key) — NO Geocoding API
-function trGeocode(addr){
+
+// Muestra la sugerencia con botón de confirmar
+function trShowSuggest(addr){
+  trSuggestAddr = addr; trResolvedCompact = addr;
+  var el = $('trSuggest'); el.style.display = '';
+  el.innerHTML = '<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;background:#dcfce7;border:1px solid #86efac;border-radius:10px;padding:8px 10px">'
+    + '<span style="font-size:14px">📍 ¿Es esta la dirección? <b id="trSuggestTxt">' + esc(addr) + '</b></span>'
+    + '<button class="btn primary sm" id="trConfirm" style="margin-left:auto">✓ Usar y buscar dueño</button>'
+    + '<button class="btn ghost sm" id="trDismiss">✕</button></div>';
+  $('trConfirm').onclick = trConfirm;
+  $('trDismiss').onclick = function(){ el.style.display = 'none'; };
+}
+
+// Resuelve con Places (autorizado) para tener condado + coords listos ANTES de confirmar
+function trResolve(addr){
   if(!(window.google && window.google.maps && google.maps.places && gAuto && gPlaces)) return;
   try{
     var c = CENTER[state.county] || CENTER.epcad;
@@ -923,14 +941,30 @@ function trGeocode(addr){
       location:new google.maps.LatLng(c.lat,c.lng), radius:60000, types:['address']
     }, function(preds, status){
       if(status!==google.maps.places.PlacesServiceStatus.OK || !preds || !preds.length) return;
-      gPlaces.getDetails({ placeId: preds[0].place_id, fields:['geometry','address_components','formatted_address'] }, function(pl){
+      gPlaces.getDetails({ placeId: preds[0].place_id, fields:['geometry','address_components'] }, function(pl){
         if(!pl) return;
         var loc = pl.geometry && pl.geometry.location; if(loc) setLatLng(loc.lat(), loc.lng());
-        var st=''; (pl.address_components||[]).forEach(function(cc){ if(cc.types.indexOf('administrative_area_level_1')>=0) st=cc.short_name; });
-        autoRoute(st);
+        var num='', route='', st='';
+        (pl.address_components||[]).forEach(function(cc){
+          if(cc.types.indexOf('street_number')>=0) num=cc.long_name;
+          if(cc.types.indexOf('route')>=0) route=cc.long_name;
+          if(cc.types.indexOf('administrative_area_level_1')>=0) st=cc.short_name;
+        });
+        if(num||route) trResolvedCompact=(num+' '+route).trim();
+        autoRoute(st);                          // deja el condado (EPCAD/Doña Ana) correcto
+        var t=document.getElementById('trSuggestTxt'); if(t) t.textContent = trResolvedCompact;  // muestra la versión limpia
       });
     });
   }catch(e){}
+}
+
+// El agente confirma → llena dirección, pone rol=owner y busca el dueño en el portal correcto
+function trConfirm(){
+  var addr = trResolvedCompact || trSuggestAddr;
+  $('addr').value = addr; state.addrCompact = addr; buildMsg();
+  setRole('owner');                 // "configurar que sea dueño"
+  $('trSuggest').style.display = 'none';
+  searchOwner();                    // abre EPCAD (TX) o Doña Ana (NM) + copia la dirección
 }
 
 function trStop(){
