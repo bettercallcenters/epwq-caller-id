@@ -271,6 +271,7 @@
           <button class="btn ghost" id="copyOwner" style="flex:0 0 auto">📋 Copy</button>
         </div>
         <div id="ownerCopied" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:var(--ok);background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px">✓ Owner name copied</div>
+        <div id="ownerDetected" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px"></div>
       </div>
     </div>
   </div>
@@ -721,6 +722,7 @@ function searchOwner(){
   if(state.county === 'epcad'){
     var url = 'https://epcad.org/Search?Keywords=' + encodeURIComponent(hs.clean || addr);
     ownerShowEmbed(url, '🏠 EPCAD — owner (El Paso, TX)');
+    epcadFetchOwner(hs);   // además: lee el dueño del GIS público y llena "Owner name" solo
   } else {
     var url2 = 'https://assessor.donaanacounty.org/assessor/taxweb/results.jsp?AllTypes=on'
         + '&SitusIDHouseNumber=' + encodeURIComponent(hs.house)
@@ -730,6 +732,31 @@ function searchOwner(){
   }
 }
 $('ownerPanelClose').addEventListener('click', function(){ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; $('ownerLaunch').style.display='none'; });
+
+/* Dueño automático desde el GIS público de El Paso (EPParcels) — sin Cloudflare, se lee del navegador.
+   Campo NAMEREAL = dueño; LOCADDRESS = dirección. Llena "Owner name" y de ahí pasa al mensaje. */
+function titleCaseName(s){ return String(s||'').toLowerCase().replace(/\b([a-z])/g, function(m,c){ return c.toUpperCase(); }); }
+function epcadFetchOwner(hs){
+  if(!hs || !hs.house || !hs.street) return;
+  var note=$('ownerDetected');
+  if(note){ note.style.display=''; note.textContent='🔎 Looking up owner in El Paso county records…'; }
+  var where = "LOCADDRESS LIKE '" + (hs.house+' '+hs.street).toUpperCase().replace(/'/g,"''") + "%'";
+  var url = 'https://gis.elpasotexas.gov/arcgis/rest/services/EPParcels/FeatureServer/0/query'
+      + '?where=' + encodeURIComponent(where)
+      + '&outFields=NAMEREAL,LOCADDRESS&returnGeometry=false&f=json';
+  var token = (hs.house+' '+hs.street).toUpperCase();
+  window.__ownerReq = token;
+  fetch(url).then(function(r){ return r.json(); }).then(function(j){
+    if(window.__ownerReq !== token) return;                  // llegó otra dirección → ignora
+    var feats = (j && j.features) || [];
+    if(!feats.length){ if(note){ note.style.display='none'; } return; }
+    var name = feats[0].attributes && feats[0].attributes.NAMEREAL;
+    if(!name){ if(note){ note.style.display='none'; } return; }
+    var pretty = titleCaseName(name);
+    $('owner').value = pretty; buildMsg();                    // llena Owner name → entra al mensaje
+    if(note){ note.style.display=''; note.textContent = '✓ Owner from El Paso records: ' + pretty + (feats.length>1 ? '  (+'+(feats.length-1)+' more matches)' : ''); }
+  }).catch(function(){ if(note){ note.style.display='none'; } });
+}
 $('ownerBtn').addEventListener('click', searchOwner);
 $('owner').addEventListener('input', buildMsg);
 
