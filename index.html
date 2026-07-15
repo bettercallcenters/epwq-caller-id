@@ -119,9 +119,9 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  .mapsGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
-  @media (max-width:760px){.mapsGrid{grid-template-columns:1fr}}
-  .mapBox{height:380px;background:#e2e8f0;border-radius:12px;overflow:hidden}
+  .mapsGrid{display:grid;grid-template-columns:1fr;gap:16px}   /* apilados a todo lo ancho = mapas más grandes, nombres legibles */
+  .mapBox{height:460px;background:#e2e8f0;border-radius:12px;overflow:hidden}
+  #houseMapZone{height:520px}   /* el mapa de zona un poco más alto para ver las calles principales */
   .mapTitle{font-size:13px;font-weight:700;color:var(--muted);margin:0 0 6px}
   .leaflet-container{border-radius:12px;font:inherit}
   .pin{filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))}
@@ -660,15 +660,25 @@ window.gm_authFailure = function(){ window.__googleBad=true; googleReady=false; 
 
 // Style that HIGHLIGHTS main streets: highways orange & thick, arterials blue, local streets faded
 var ZONE_STYLES = [
-  { featureType:'road.highway', elementType:'geometry.stroke', stylers:[{color:'#9a3412'}] },
-  { featureType:'road.highway', elementType:'geometry.fill',   stylers:[{color:'#f97316'},{weight:4}] },
-  { featureType:'road.highway', elementType:'labels.text.fill',stylers:[{color:'#9a3412'}] },
-  { featureType:'road.arterial',elementType:'geometry',        stylers:[{color:'#2563eb'},{weight:2.6}] },
-  { featureType:'road.arterial',elementType:'labels.text.fill',stylers:[{color:'#1d4ed8'}] },
-  { featureType:'road.local',   elementType:'geometry',        stylers:[{color:'#e5e7eb'}] },
-  { featureType:'road.local',   elementType:'labels',          stylers:[{visibility:'off'}] },
-  { featureType:'poi',                                          stylers:[{visibility:'simplified'}] },
-  { featureType:'transit',                                      stylers:[{visibility:'off'}] }
+  // Highways: gruesas naranja; nombre grande, oscuro, con HALO BLANCO para que se lea
+  { featureType:'road.highway', elementType:'geometry.fill',    stylers:[{color:'#fb923c'},{weight:5.5}] },
+  { featureType:'road.highway', elementType:'geometry.stroke',  stylers:[{color:'#c2410c'}] },
+  { featureType:'road.highway', elementType:'labels.text.fill', stylers:[{color:'#7c2d12'}] },
+  { featureType:'road.highway', elementType:'labels.text.stroke',stylers:[{color:'#ffffff'},{weight:5}] },
+  // Arterials (avenidas/boulevards principales — Edgemere, Joe Battle, Pebble Hills): azul grueso + nombre azul con halo
+  { featureType:'road.arterial',elementType:'geometry',         stylers:[{color:'#3b82f6'},{weight:4}] },
+  { featureType:'road.arterial',elementType:'labels.text.fill', stylers:[{color:'#1e3a8a'}] },
+  { featureType:'road.arterial',elementType:'labels.text.stroke',stylers:[{color:'#ffffff'},{weight:5}] },
+  // Calles locales: muy tenues y SIN nombre → así solo resaltan las principales
+  { featureType:'road.local',   elementType:'geometry',         stylers:[{color:'#e5e7eb'}] },
+  { featureType:'road.local',   elementType:'labels',           stylers:[{visibility:'off'}] },
+  // Quita ruido para que los nombres de las principales dominen
+  { featureType:'poi',          elementType:'labels',           stylers:[{visibility:'off'}] },
+  { featureType:'poi',          elementType:'geometry',         stylers:[{color:'#eef2f7'}] },
+  { featureType:'transit',                                       stylers:[{visibility:'off'}] },
+  { featureType:'landscape',    elementType:'geometry',         stylers:[{color:'#f8fafc'}] },
+  { featureType:'administrative','elementType':'labels',        stylers:[{visibility:'off'}] },
+  { featureType:'water',        elementType:'geometry',         stylers:[{color:'#dbeafe'}] }
 ];
 
 /* ---- Google Maps (two) ---- */
@@ -683,7 +693,7 @@ function showGoogleMaps(){
   } else { gmapSat.setCenter(pos); gmSat.setPosition(pos); }
   if(!gmapZone){
     gmapZone = new google.maps.Map(document.getElementById('houseMapZone'), {
-      center:pos, zoom:14, mapTypeId:'roadmap', styles:ZONE_STYLES,
+      center:pos, zoom:15, mapTypeId:'roadmap', styles:ZONE_STYLES,
       streetViewControl:false, mapTypeControl:false, fullscreenControl:true
     });
     gmZone = new google.maps.Marker({map:gmapZone, position:pos});
