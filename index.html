@@ -259,37 +259,32 @@
         <div id="ownerDetected" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px"></div>
       </div>
 
-      <!-- ===== LIVE TRANSCRIPT (debajo de dirección/dueño para no empujarlos hacia abajo) ===== -->
-      <div id="trBlock" style="margin:8px 0 0;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--soft)">
-        <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-          <button class="btn primary sm" id="trBtn">🎧 Arm auto-transcript</button>
-          <span class="badge" style="background:#fef3c7;color:#b45309">beta</span>
-          <label style="font-size:12px;color:var(--muted);white-space:nowrap">Your name:</label>
-          <input type="text" id="agentName" placeholder="Hector" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px" />
-          <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Clear</button>
-        </div>
-        <div class="hintline" id="trStatus" style="margin:0 0 8px"><b>Arm once</b> (allow mic + share this tab's audio) → it auto-transcribes every call, separating Agent/Client.</div>
-        <!-- Medidor de micrófono/llamada: confirma que sí capta el audio -->
-        <div id="dgMeters" style="display:none;gap:14px;margin:0 0 8px;font-size:12px;color:var(--muted)">
-          <div style="flex:1">🎤 You (mic)<div class="meterTrack"><div id="meterMic" class="meterFill"></div></div></div>
-          <div style="flex:1">📞 Call (client)<div class="meterTrack"><div id="meterCall" class="meterFill"></div></div></div>
-        </div>
-        <div id="trHUD" style="height:240px;min-height:120px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;font-size:15px;line-height:1.6"></div>
-        <div class="hintline" style="margin-top:4px">Scroll up/down to review the conversation, and drag the corner ↘ to make it bigger.</div>
-      </div>
     </div>
   </div>
 
   <!-- ================= COLUMNA DERECHA: SOFTPHONE + CITA + MENSAJE ================= -->
   <div style="display:flex;flex-direction:column;gap:16px">
 
-    <!-- HUD de equipo: quién está en llamada -->
+    <!-- ===== LIVE TRANSCRIPT (arriba a la derecha: ver lo que se dice en la llamada) ===== -->
     <div class="card">
-      <h2>👥 Team status</h2>
-      <div class="body" style="padding:12px 14px">
-        <div id="teamList" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--muted);font-size:13px">Connecting…</span></div>
-        <div id="teamAlert" style="display:none;margin-top:10px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 12px;font-weight:800;font-size:15px">🚨 TODOS EN LLAMADA — favor de contestar</div>
-        <div class="hintline" style="margin-top:8px">Each agent's app reports its own status. Shows only agents with the app open. Voice + alert fire when everyone online is on a call.</div>
+      <h2>🎧 Live transcript</h2>
+      <div class="body">
+        <div id="trBlock">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+            <button class="btn primary sm" id="trBtn">🎧 Arm auto-transcript</button>
+            <span class="badge" style="background:#fef3c7;color:#b45309">beta</span>
+            <label style="font-size:12px;color:var(--muted);white-space:nowrap">Your name:</label>
+            <input type="text" id="agentName" placeholder="Hector" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px" />
+            <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Clear</button>
+          </div>
+          <div class="hintline" id="trStatus" style="margin:0 0 8px"><b>Arm once</b> (allow mic + share this tab's audio) → it auto-transcribes every call, separating Agent/Client.</div>
+          <div id="dgMeters" style="display:none;gap:14px;margin:0 0 8px;font-size:12px;color:var(--muted)">
+            <div style="flex:1">🎤 You (mic)<div class="meterTrack"><div id="meterMic" class="meterFill"></div></div></div>
+            <div style="flex:1">📞 Call (client)<div class="meterTrack"><div id="meterCall" class="meterFill"></div></div></div>
+          </div>
+          <div id="trHUD" style="height:260px;min-height:120px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;font-size:15px;line-height:1.6"></div>
+          <div class="hintline" style="margin-top:4px">Scroll up/down to review the conversation, and drag the corner ↘ to make it bigger.</div>
+        </div>
       </div>
     </div>
 
@@ -347,14 +342,6 @@
       </div>
     </div>
 
-    <!-- Softphone de RingCentral EMBEBIDO y grande -->
-    <div class="card">
-      <h2>📞 RingCentral softphone</h2>
-      <div class="body" style="padding:8px">
-        <div id="rcMount" style="width:100%;height:620px;background:#f1f5f9;border-radius:12px"></div>
-      </div>
-    </div>
-
     <div class="card">
       <h2><span class="step">3</span> Appointment Message (FWD)</h2>
       <div class="body">
@@ -364,6 +351,24 @@
           <button class="btn ghost" id="smsMsg">💬 Prefill SMS in RingCentral</button>
         </div>
         <div class="hintline">Copy and paste it in the WhatsApp group, or prefill the SMS in RingCentral (you press “send”).</div>
+      </div>
+    </div>
+
+    <!-- Softphone de RingCentral EMBEBIDO y grande -->
+    <div class="card">
+      <h2>📞 RingCentral softphone</h2>
+      <div class="body" style="padding:8px">
+        <div id="rcMount" style="width:100%;height:620px;background:#f1f5f9;border-radius:12px"></div>
+      </div>
+    </div>
+
+    <!-- HUD de equipo: quién está en llamada -->
+    <div class="card">
+      <h2>👥 Team status</h2>
+      <div class="body" style="padding:12px 14px">
+        <div id="teamList" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--muted);font-size:13px">Connecting…</span></div>
+        <div id="teamAlert" style="display:none;margin-top:10px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 12px;font-weight:800;font-size:15px">🚨 TODOS EN LLAMADA — favor de contestar</div>
+        <div class="hintline" style="margin-top:8px">Each agent's app reports its own status. Shows only agents with the app open. Voice + alert fire when everyone online is on a call.</div>
       </div>
     </div>
   </div>
