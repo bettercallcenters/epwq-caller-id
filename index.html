@@ -176,7 +176,10 @@
           <div class="num" id="incNum">— — —</div>
           <div id="incMeta" style="font-size:13px;opacity:.92;margin-top:3px"></div>
         </div>
-        <div class="sp" id="incActions" style="display:none">
+        <div class="sp" id="incActions" style="display:none;gap:6px;flex-wrap:wrap">
+          <button class="btn sm" id="answerBtn" style="background:#16a34a;color:#fff;border-color:#16a34a;font-weight:700">📞 Answer</button>
+          <button class="btn ghost sm" id="rejectBtn">✕ Reject</button>
+          <button class="btn ghost sm" id="hangupBtn" style="display:none">📵 Hang up</button>
           <button class="btn ghost sm" id="incUsp">🔎 USPhonebook</button>
         </div>
       </div>
@@ -886,6 +889,16 @@ $('smsMsg').addEventListener('click', function(){
   toast('SMS prefilled in RingCentral — review and send');
 });
 
+/* Contestar / rechazar / colgar la llamada desde aquí (sin ir al softphone) — RingCentral Embeddable control-call */
+function rcControl(action){
+  var frame = document.querySelector('#rc-widget-adapter-frame');
+  if(!frame || !frame.contentWindow){ toast('Sign in to the RingCentral softphone first'); return; }
+  frame.contentWindow.postMessage({ type:'rc-adapter-control-call', callAction:action, callId: window.__rcCallId || undefined }, '*');
+}
+if($('answerBtn')) $('answerBtn').addEventListener('click', function(){ rcControl('answer'); toast('📞 Answering…'); });
+if($('rejectBtn')) $('rejectBtn').addEventListener('click', function(){ rcControl('reject'); });
+if($('hangupBtn')) $('hangupBtn').addEventListener('click', function(){ rcControl('hangup'); });
+
 /* ============================================================
    MAPS: 🛰️ Roof (solar) + 🗺️ Area (main streets highlighted)
    Two maps at once. Google if the key works; else Esri + OSM (free).
@@ -1190,6 +1203,7 @@ window.addEventListener('message', function(e){
       name:            ex.name            || prev.name            || ''
     };
     if(from.phoneNumber || from.extensionNumber || from.name) window.__lastFrom = from;
+    if(id) window.__rcCallId = id;                              // para el botón Contestar/Colgar
     onIncoming(from.phoneNumber || from.extensionNumber || '', st === 'answered', from);
     reportStatus(st === 'answered' ? 'oncall' : 'ringing');   // HUD de equipo
     if(st === 'answered') callIsActive = true;
@@ -1302,6 +1316,10 @@ function onIncoming(num, answered, from){
   $('incNum').textContent = pretty;
   box.querySelector('.lbl').textContent = answered ? 'Call in progress' : '📞 Incoming call!';
   $('incActions').style.display = num ? 'flex' : 'none';
+  // Contestar/Rechazar solo mientras suena; Colgar cuando ya está contestada
+  if($('answerBtn')) $('answerBtn').style.display = answered ? 'none' : '';
+  if($('rejectBtn')) $('rejectBtn').style.display = answered ? 'none' : '';
+  if($('hangupBtn')) $('hangupBtn').style.display = answered ? '' : 'none';
   if(num){ $('phone').value = pretty; buildMsg(); }
 
   // AUTO: busca la info del cliente en el bot (una vez por número) y la muestra dentro de la app
@@ -1322,6 +1340,7 @@ function onIncoming(num, answered, from){
 function callEnded(){
   alertStop();
   lastLookedUp='';   // la próxima llamada (aunque sea el mismo número) vuelve a buscar
+  window.__rcCallId = null;
   var box = $('incoming'); box.classList.remove('live');
   box.querySelector('.lbl').textContent = 'Waiting for call';
   $('incNum').textContent = '— — —';
@@ -1457,24 +1476,83 @@ function trDetectAddress(full){
   var addr = (last[1]+' '+last[2]+(last[3]?(' '+last[3]):'')).replace(/\s+/g,' ').trim();
   if(addr.toLowerCase()===trLastAddr.toLowerCase()) return;
   trLastAddr=addr;
-  trShowSuggest(addr);   // SUGIERE (no llena) — el agente confirma con el botón
-  trResolve(addr);       // en 2° plano: resuelve estado+coords → al confirmar ya está el condado correcto
+  trShowSuggest(addr);   // muestra lo oído + opciones REALES de Google para elegir
 }
 
-// Muestra la sugerencia con botón de confirmar
+// Muestra lo que se OYÓ en la llamada + una lista de DIRECCIONES REALES de Google para elegir la correcta.
+// (No llena el campo con la adivinanza del transcript — solo cuando el agente elige una real.)
 function trShowSuggest(addr){
-  trSuggestAddr = addr; trResolvedCompact = addr;
-  $('addr').value = addr; state.addrCompact = addr; buildMsg();   // auto-llena la dirección detectada en el campo
+  trSuggestAddr = addr;
   var el = $('addrSuggest'); el.style.display = '';
   el.innerHTML = '<div style="background:#dcfce7;border:1px solid #86efac;border-radius:10px;padding:9px 11px">'
-    + '<div style="font-size:14px;margin-bottom:6px">📍 Detected from the call: <b id="trSuggestTxt">' + esc(addr) + '</b> — is it correct?</div>'
-    + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-    + '<button class="btn primary sm" id="trConfirm">✓ Confirm &amp; find owner</button>'
-    + '<button class="btn ghost sm" id="trEdit">✏️ Edit</button>'
+    + '<div style="font-size:14px;margin-bottom:8px">📍 Heard on the call: <b>' + esc(addr) + '</b> — pick the real address:</div>'
+    + '<div id="trPredList" style="display:flex;flex-direction:column;gap:6px"><div style="font-size:13px;color:#166534">🔎 Getting real addresses from Google…</div></div>'
+    + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:8px">'
+    + '<button class="btn ghost sm" id="trUseHeard">Use as heard</button>'
+    + '<button class="btn ghost sm" id="trEdit">✏️ Type it</button>'
     + '<button class="btn ghost sm" id="trDismiss">✕ Dismiss</button></div></div>';
-  $('trConfirm').onclick = trConfirm;
-  $('trEdit').onclick = function(){ el.style.display='none'; $('addr').focus(); $('addr').select(); };
+  $('trUseHeard').onclick = function(){ pickTrAddress(addr); };
+  $('trEdit').onclick = function(){ el.style.display='none'; $('addr').value=addr; $('addr').focus(); $('addr').select(); };
   $('trDismiss').onclick = function(){ el.style.display = 'none'; };
+  trPredictReal(addr);
+}
+// Trae las opciones REALES de Google Places para lo que se oyó y las muestra como botones
+function trPredictReal(addr){
+  var list = document.getElementById('trPredList');
+  if(!(window.google && window.google.maps && google.maps.places && gAuto)){
+    if(list) list.innerHTML = '<div style="font-size:13px;color:#166534">Google isn\'t ready — use it as heard or type it.</div>';
+    return;
+  }
+  var c = CENTER[state.county] || CENTER.epcad;
+  var token = addr;
+  gAuto.getPlacePredictions({
+    input: addr, componentRestrictions:{country:'us'},
+    location:new google.maps.LatLng(c.lat,c.lng), radius:60000, types:['address']
+  }, function(preds, status){
+    if(!list || token!==trSuggestAddr) return;   // llegó otra detección → ignora
+    if(status!==google.maps.places.PlacesServiceStatus.OK || !preds || !preds.length){
+      list.innerHTML = '<div style="font-size:13px;color:#166534">No Google match — use it as heard or type it.</div>'; return;
+    }
+    list.innerHTML = '';
+    preds.slice(0,4).forEach(function(p){
+      var b = document.createElement('button');
+      b.className = 'btn ghost sm';
+      b.style.cssText = 'text-align:left;width:100%;white-space:normal;line-height:1.35';
+      b.innerHTML = '📍 ' + esc(p.description);
+      b.onclick = function(){ pickTrPrediction(p); };
+      list.appendChild(b);
+    });
+  });
+}
+// El agente elige una dirección REAL de la lista → llena el campo con la versión oficial + busca dueño
+function pickTrPrediction(p){
+  $('addrSuggest').style.display = 'none';
+  if(!(gPlaces && p && p.place_id)){ pickTrAddress(p && p.description || ''); return; }
+  gPlaces.getDetails({ placeId:p.place_id, fields:['geometry','address_components','formatted_address'] }, function(pl){
+    if(!pl){ pickTrAddress(p.description); return; }
+    var num='', route='', st='';
+    (pl.address_components||[]).forEach(function(cc){
+      if(cc.types.indexOf('street_number')>=0) num=cc.long_name;
+      if(cc.types.indexOf('route')>=0) route=cc.long_name;
+      if(cc.types.indexOf('administrative_area_level_1')>=0) st=cc.short_name;
+    });
+    var compact = (num+' '+route).trim();
+    $('addr').value = pl.formatted_address || p.description;
+    state.addrCompact = compact || pl.formatted_address || p.description;
+    var loc = pl.geometry && pl.geometry.location; if(loc) setLatLng(loc.lat(), loc.lng());
+    autoRoute(st);                 // condado correcto (EPCAD/Doña Ana)
+    setRole('owner'); buildMsg();
+    searchOwner();                 // busca el dueño con la dirección REAL
+  });
+}
+// "Use as heard": usa el texto tal cual (respaldo si Google no la tiene)
+function pickTrAddress(addr){
+  $('addrSuggest').style.display = 'none';
+  if(!addr) return;
+  $('addr').value = addr; state.addrCompact = addr;
+  setRole('owner'); buildMsg();
+  trResolve(addr);               // intenta condado/coords en 2° plano
+  searchOwner();
 }
 
 // Resuelve con Places (autorizado) para tener condado + coords listos ANTES de confirmar
