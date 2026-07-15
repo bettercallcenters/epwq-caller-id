@@ -234,7 +234,17 @@
       <!-- Find owner -->
       <div class="field">
         <button class="btn primary wide" id="ownerBtn">🏠 Find owner &nbsp;→&nbsp; <span id="ownerBtnLbl">open EPCAD</span></button>
-        <div class="hintline">Opens the official search <b>already loaded with the address</b> — shows the owner directly, no re-typing.</div>
+        <div class="hintline">Shows the county record <b>right here</b> with the owner — no re-typing. (Doña Ana opens in a tab: it blocks embedding.)</div>
+      </div>
+
+      <!-- Recuadro del dueño (EPCAD embebido dentro de la app) -->
+      <div class="field" id="ownerPanel" style="display:none">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
+          <label style="margin:0">🏠 County record — owner</label>
+          <a id="ownerPanelOpen" class="btn ghost sm" href="#" target="_blank" rel="noopener" style="margin-left:auto">↗ Open in tab</a>
+          <button class="btn ghost sm" id="ownerPanelClose">✕</button>
+        </div>
+        <iframe id="ownerFrame" style="width:100%;height:430px;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
       </div>
 
       <!-- Owner name -->
@@ -592,21 +602,25 @@ function parseHouseStreet(addr){
   var street = (m ? m[2] : a).replace(ST_SUFFIX,'').trim();
   return { house:house, street:street, clean:((house?house+' ':'')+street).trim() };
 }
-// Abre el buscador oficial YA con la dirección buscada → muestra al dueño directo (deep-link, sin re-escribir)
+// Muestra el registro del condado con el DUEÑO: EPCAD embebido AQUÍ MISMO; Doña Ana en pestaña (bloquea iframes)
 function searchOwner(){
   var addr = (state.addrCompact || $('addr').value || '').trim();
   if(!addr){ toast('Type the address first'); $('addr').focus(); return; }
   var hs = parseHouseStreet(addr);
-  var url;
   if(state.county === 'epcad'){
-    url = 'https://epcad.org/Search?Keywords=' + encodeURIComponent(hs.clean || addr);
+    var url = 'https://epcad.org/Search?Keywords=' + encodeURIComponent(hs.clean || addr);
+    $('ownerFrame').src = url;
+    $('ownerPanelOpen').href = url;
+    $('ownerPanel').style.display = '';
+    try{ $('ownerPanel').scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
   } else {
-    url = 'https://assessor.donaanacounty.org/assessor/taxweb/results.jsp?AllTypes=on'
+    var url2 = 'https://assessor.donaanacounty.org/assessor/taxweb/results.jsp?AllTypes=on'
         + '&SitusIDHouseNumber=' + encodeURIComponent(hs.house)
         + '&SitusIDStreetName='  + encodeURIComponent(hs.street);
+    window.open(url2, '_blank', 'noopener');
   }
-  window.open(url, '_blank', 'noopener');
 }
+$('ownerPanelClose').addEventListener('click', function(){ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; });
 $('ownerBtn').addEventListener('click', searchOwner);
 $('owner').addEventListener('input', buildMsg);
 
@@ -761,7 +775,7 @@ function addMainStreetLabels(lat, lng){
   clearZoneLabels();
   var listEl = document.getElementById('zoneStreets');
   if(listEl) listEl.innerHTML = '<span style="color:var(--muted)">Loading main streets…</span>';
-  var q = '[out:json][timeout:20];way(around:1700,'+lat+','+lng+')["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"]["name"];out geom;';
+  var q = '[out:json][timeout:20];way(around:1700,'+lat+','+lng+')["highway"~"^(motorway|trunk|primary|secondary)$"]["name"];out geom;';   // SOLO principales (sin tertiary: fuera Tierra Cortez/Turner)
   var i = 0;
   function tryEp(){
     if(i >= OVERPASS_EPS.length){ if(listEl) listEl.innerHTML=''; return; }
@@ -781,7 +795,7 @@ function addMainStreetLabels(lat, lng){
       }
     });
     var streets = Object.keys(byName).map(function(k){ return byName[k]; })
-      .sort(function(a,b){ return (a.rank-b.rank) || (a.d-b.d); }).slice(0,9);
+      .sort(function(a,b){ return (a.rank-b.rank) || (a.d-b.d); }).slice(0,6);
     if(gmapZone){
       streets.forEach(function(s){
         zoneLabels.push(new google.maps.Marker({ map:gmapZone, position:{lat:s.lat,lng:s.lng}, icon:streetLabelIcon(s.name), clickable:false, zIndex:900 }));
@@ -1047,6 +1061,7 @@ function callEnded(){
   $('incNum').textContent = '— — —';
   $('incMeta').textContent = '';
   $('incActions').style.display = 'none';
+  try{ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; }catch(e){}   // limpia el recuadro del dueño
 }
 // Al terminar la llamada: DETIENE el transcript por completo y limpia (no puede seguir corriendo)
 function stopTranscriptOnCallEnd(){
