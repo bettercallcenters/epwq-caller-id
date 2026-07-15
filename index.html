@@ -58,6 +58,9 @@
   textarea{resize:vertical;min-height:120px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
 
   .row{display:flex;gap:10px}.row>*{flex:1}
+  input[type=date],select.sel{padding:11px 12px;border:1px solid var(--line);border-radius:10px;
+        font-size:15px;background:#fff;color:var(--ink);outline:none;font-family:inherit}
+  input[type=date]:focus,select.sel:focus{border-color:var(--brand2);box-shadow:0 0 0 3px rgba(14,165,233,.15)}
 
   .btn{appearance:none;border:1px solid transparent;border-radius:10px;padding:10px 14px;font-size:14px;
         font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;justify-content:center;
@@ -213,14 +216,20 @@
       <h2><span class="step">2</span> Detalles de la cita</h2>
       <div class="body">
         <div class="field">
-          <label>¿Cuándo? (día y horario)</label>
-          <input type="text" id="when" placeholder="Today 4-6 Pm" value="Today " autocomplete="off" />
+          <label>¿Cuándo? · Día (calendario)</label>
+          <input type="date" id="apptDate" style="width:100%" />
           <div class="chips" style="margin-top:8px">
-            <span class="chip" data-set-when="Today ">Today</span>
-            <span class="chip" data-set-when="Tomorrow ">Tomorrow</span>
-            <span class="chip" data-add-when="2-4 Pm">2-4 Pm</span>
-            <span class="chip" data-add-when="4-6 Pm">4-6 Pm</span>
-            <span class="chip" data-add-when="6-8 Pm">6-8 Pm</span>
+            <span class="chip on" data-day="0">Hoy</span>
+            <span class="chip" data-day="1">Mañana</span>
+            <span class="chip" data-day="2">Pasado</span>
+          </div>
+        </div>
+        <div class="field">
+          <label>Horario (de … a …)</label>
+          <div style="display:flex;align-items:center;gap:8px">
+            <select id="timeFrom" class="sel" style="flex:1"></select>
+            <span style="color:var(--muted);flex:0 0 auto;font-weight:600">a</span>
+            <select id="timeTo" class="sel" style="flex:1"></select>
           </div>
         </div>
 
@@ -529,8 +538,7 @@ $('owner').addEventListener('input', buildMsg);
 ============================================================ */
 document.addEventListener('click', function(e){
   var c = e.target.closest('.chip'); if(!c) return;
-  if(c.dataset.setWhen!=null){ $('when').value = c.dataset.setWhen; buildMsg(); }
-  if(c.dataset.addWhen!=null){ $('when').value = ($('when').value.trim()+' '+c.dataset.addWhen).replace(/\s+/g,' ').trim()+''; buildMsg(); }
+  if(c.dataset.day!=null){ setDayOffset(parseInt(c.dataset.day,10)); }
   if(c.dataset.lang){ state.lang=c.dataset.lang; setOn('langChips',c); buildMsg(); }
   if(c.dataset.role){ state.role=c.dataset.role; setOn('roleChips',c); buildMsg(); }
 });
@@ -540,7 +548,7 @@ function setRole(r){
   [].forEach.call($('roleChips').querySelectorAll('.chip'), function(x){ x.classList.toggle('on', x.dataset.role===r); });
   buildMsg();
 }
-$('when').addEventListener('input', buildMsg);
+/* (el campo de texto 'when' se reemplazó por calendario + horario flexible) */
 
 /* ============================================================
    MENSAJE DE LA CITA (formato exacto del equipo)
@@ -553,7 +561,7 @@ $('when').addEventListener('input', buildMsg);
 function buildMsg(){
   var name  = $('owner').value.trim();
   var addr  = (state.addrCompact || $('addr').value || '').trim();
-  var when  = $('when').value.trim();
+  var when  = computeWhen();
   var phone = digits($('phone').value);
   var line4 = state.lang + '/ ' + state.role;
   var parts = [];
@@ -977,6 +985,48 @@ function trStop(){
   $('trBtn').textContent='🎧 Iniciar transcript'; $('trBtn').disabled=false;
   trSetStatus('Detenido. Comparte el audio de la pestaña para empezar.');
 }
+
+/* ============================================================
+   CITA — Día (calendario) + Horario flexible (de … a …)
+============================================================ */
+function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+function dateOff(n){ var d=new Date(); d.setDate(d.getDate()+n); return d; }
+function h12(h){ var x=h%12; return x===0?12:x; }
+function mer(h){ return h<12?'Am':'Pm'; }
+function fmtRange(from,to){
+  if(isNaN(from)||isNaN(to)) return '';
+  return mer(from)===mer(to) ? (h12(from)+'-'+h12(to)+' '+mer(to))
+                             : (h12(from)+' '+mer(from)+'-'+h12(to)+' '+mer(to));
+}
+function computeWhen(){
+  var val=$('apptDate').value, day='Today';
+  if(val){
+    var today=ymd(new Date()), t1=ymd(dateOff(1));
+    if(val===today) day='Today';
+    else if(val===t1) day='Tomorrow';
+    else { var d=new Date(val+'T00:00:00');
+      day = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'][d.getDay()]+' '
+          + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+d.getDate();
+    }
+  }
+  return (day+' '+fmtRange(parseInt($('timeFrom').value,10), parseInt($('timeTo').value,10))).trim();
+}
+function fillTimes(){
+  var o=''; for(var h=7;h<=21;h++) o+='<option value="'+h+'">'+h12(h)+' '+mer(h)+'</option>';
+  $('timeFrom').innerHTML=o; $('timeTo').innerHTML=o;
+  $('timeFrom').value='16'; $('timeTo').value='18';   // 4 Pm – 6 Pm por defecto
+}
+function updateDayChips(){
+  var val=$('apptDate').value, m={ '0':val===ymd(new Date()), '1':val===ymd(dateOff(1)), '2':val===ymd(dateOff(2)) };
+  [].forEach.call(document.querySelectorAll('[data-day]'), function(c){ c.classList.toggle('on', m[c.dataset.day]===true); });
+}
+function setDayOffset(n){ $('apptDate').value=ymd(dateOff(n)); updateDayChips(); buildMsg(); }
+
+$('apptDate').value = ymd(new Date());   // default: hoy (día de la llamada)
+fillTimes(); updateDayChips();
+$('apptDate').addEventListener('change', function(){ updateDayChips(); buildMsg(); });
+$('timeFrom').addEventListener('change', buildMsg);
+$('timeTo').addEventListener('change', buildMsg);
 
 /* Inicial */
 buildMsg();
