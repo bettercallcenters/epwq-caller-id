@@ -723,15 +723,13 @@ var ZONE_STYLES = [
   { featureType:'road.arterial',elementType:'geometry',         stylers:[{color:'#3b82f6'},{weight:4}] },
   { featureType:'road.arterial',elementType:'labels.text.fill', stylers:[{color:'#1e3a8a'}] },
   { featureType:'road.arterial',elementType:'labels.text.stroke',stylers:[{color:'#ffffff'},{weight:5}] },
-  // Calles locales: muy tenues y SIN nombre → así solo resaltan las principales
+  // Calles locales: geometría tenue pero CON sus nombres normales de Google (contexto del vecindario)
   { featureType:'road.local',   elementType:'geometry',         stylers:[{color:'#e5e7eb'}] },
-  { featureType:'road.local',   elementType:'labels',           stylers:[{visibility:'off'}] },
-  // Quita ruido para que los nombres de las principales dominen
+  // Quita solo el ruido de negocios/transporte; deja nombres de calles y colonias como Google los da
   { featureType:'poi',          elementType:'labels',           stylers:[{visibility:'off'}] },
   { featureType:'poi',          elementType:'geometry',         stylers:[{color:'#eef2f7'}] },
   { featureType:'transit',                                       stylers:[{visibility:'off'}] },
   { featureType:'landscape',    elementType:'geometry',         stylers:[{color:'#f8fafc'}] },
-  { featureType:'administrative','elementType':'labels',        stylers:[{visibility:'off'}] },
   { featureType:'water',        elementType:'geometry',         stylers:[{color:'#dbeafe'}] }
 ];
 
@@ -795,7 +793,7 @@ function addMainStreetLabels(lat, lng){
       }
     });
     var streets = Object.keys(byName).map(function(k){ return byName[k]; })
-      .sort(function(a,b){ return (a.rank-b.rank) || (a.d-b.d); }).slice(0,6);
+      .sort(function(a,b){ return (a.rank-b.rank) || (a.d-b.d); }).slice(0,4);
     if(gmapZone){
       streets.forEach(function(s){
         zoneLabels.push(new google.maps.Marker({ map:gmapZone, position:{lat:s.lat,lng:s.lng}, icon:streetLabelIcon(s.name), clickable:false, zIndex:900 }));
