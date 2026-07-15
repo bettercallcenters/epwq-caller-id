@@ -147,6 +147,13 @@
         </div>
       </div>
 
+      <!-- Controles de alerta -->
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
+        <button class="btn ghost sm" id="notifBtn">🔔 Activar alertas de escritorio</button>
+        <button class="btn ghost sm" id="muteBtn">🔊 Sonido: activado</button>
+        <button class="btn ghost sm" id="testAlert">▶︎ Probar alerta</button>
+      </div>
+
       <!-- Condado -->
       <div class="field">
         <label>¿De dónde viene la llamada?</label>
@@ -647,6 +654,75 @@ var RC_CLIENT_ID = '';
   first.parentNode.insertBefore(s, first);
 })();
 
+/* ============================================================
+   ALERTA DE LLAMADA ENTRANTE — 🔊 sonido + 🔔 notificación + parpadeo de pestaña
+============================================================ */
+var soundOn=true, ac=null, ringOn=false, ringLoop=null, titleTimer=null, ORIG_TITLE=document.title;
+
+// El navegador exige un clic antes de reproducir audio → lo desbloqueamos en la 1ª interacción
+document.addEventListener('click', function(){
+  try{ ac = ac || new (window.AudioContext||window.webkitAudioContext)(); if(ac.state==='suspended') ac.resume(); }catch(e){}
+});
+
+function beep(t,dur,freq){
+  var o=ac.createOscillator(), g=ac.createGain();
+  o.type='sine'; o.frequency.value=freq; o.connect(g); g.connect(ac.destination);
+  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.3,t+0.02);
+  g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.start(t); o.stop(t+dur+0.02);
+}
+function ringCycle(){
+  if(!ringOn || !ac) return;
+  var t=ac.currentTime; beep(t,0.4,880); beep(t+0.5,0.4,880);   // “ring-ring”
+  ringLoop=setTimeout(ringCycle, 2200);
+}
+function ringStart(){
+  if(ringOn || !soundOn) return;
+  try{ ac = ac || new (window.AudioContext||window.webkitAudioContext)(); if(ac.state==='suspended') ac.resume(); }catch(e){ return; }
+  ringOn=true; ringCycle();
+}
+function ringStop(){ ringOn=false; if(ringLoop){ clearTimeout(ringLoop); ringLoop=null; } }
+
+function titleFlashStart(num){
+  titleFlashStop(); var on=false;
+  titleTimer=setInterval(function(){ document.title = on ? ('📞 LLAMADA — '+num) : ('🔔 '+num+' llamando…'); on=!on; }, 900);
+}
+function titleFlashStop(){ if(titleTimer){ clearInterval(titleTimer); titleTimer=null; } document.title=ORIG_TITLE; }
+
+function notifyIncoming(num){
+  if(!('Notification' in window) || Notification.permission!=='granted') return;
+  try{
+    var n=new Notification('📞 Llamada entrante', { body: num+' — contesta en la app EPWQ', tag:'epwq-call', requireInteraction:true });
+    n.onclick=function(){ window.focus(); n.close(); };
+  }catch(e){}
+}
+
+function alertStart(num){ ringStart(); titleFlashStart(num); notifyIncoming(num); }
+function alertStop(){ ringStop(); titleFlashStop(); }
+
+// Botón: activar notificaciones de escritorio (pide permiso al navegador)
+$('notifBtn').addEventListener('click', function(){
+  if(!('Notification' in window)){ toast('Este navegador no soporta notificaciones'); return; }
+  Notification.requestPermission().then(function(p){
+    if(p==='granted'){ notifDone(); toast('Alertas de escritorio activadas ✔'); }
+    else { toast('El navegador no dio permiso de notificaciones'); }
+  });
+});
+function notifDone(){ var b=$('notifBtn'); b.textContent='🔔 Alertas activadas ✔'; b.disabled=true; b.style.opacity=.7; }
+if(('Notification' in window) && Notification.permission==='granted'){ notifDone(); }
+
+// Botón: silenciar / activar el timbre de la app
+$('muteBtn').addEventListener('click', function(){
+  soundOn=!soundOn;
+  this.textContent = soundOn ? '🔊 Sonido: activado' : '🔇 Sonido: apagado';
+  if(!soundOn) ringStop();
+});
+
+// Botón: probar la alerta (simula una llamada 5 seg)
+$('testAlert').addEventListener('click', function(){
+  onIncoming('8328658324');
+  setTimeout(callEnded, 5000);
+});
+
 window.addEventListener('message', function(e){
   var d = e.data; if(!d || !d.type) return;
 
@@ -671,15 +747,29 @@ window.addEventListener('message', function(e){
       onIncoming(f2.phoneNumber || '', true);
     }
   }
+
+  // Llamada terminada / colgada / rechazada → callar la alerta
+  if(d.type === 'rc-call-end-notify'){ callEnded(); }
 });
 
 function onIncoming(num, answered){
+  var pretty = prettyPhone(num) || 'Número oculto';
   var box = $('incoming');
   box.classList.add('live');
-  $('incNum').textContent = prettyPhone(num) || 'Número oculto';
-  $('incoming').querySelector('.lbl').textContent = answered ? 'Llamada en curso' : 'Llamada entrante';
+  $('incNum').textContent = pretty;
+  box.querySelector('.lbl').textContent = answered ? 'Llamada en curso' : '📞 ¡Llamada entrante!';
   $('incActions').style.display = num ? 'flex' : 'none';
-  if(num){ $('phone').value = prettyPhone(num); buildMsg(); }
+  if(num){ $('phone').value = pretty; buildMsg(); }
+  try{ box.scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
+  if(answered){ alertStop(); }        // ya contestó → callar
+  else { alertStart(pretty); }        // sonando → sonido + notificación + parpadeo
+}
+function callEnded(){
+  alertStop();
+  var box = $('incoming'); box.classList.remove('live');
+  box.querySelector('.lbl').textContent = 'En espera de llamada';
+  $('incNum').textContent = '— — —';
+  $('incActions').style.display = 'none';
 }
 function prettyPhone(s){
   var d = digits(s);
