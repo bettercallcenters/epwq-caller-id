@@ -226,10 +226,14 @@
           </div>
         </div>
         <div class="field">
-          <label>Horario (de … a …)</label>
+          <label>Horario</label>
+          <div class="seg" id="timeMode" style="margin-bottom:8px">
+            <button data-tm="range" class="on">Rango (de…a…)</button>
+            <button data-tm="exact">Hora exacta</button>
+          </div>
           <div style="display:flex;align-items:center;gap:8px">
             <select id="timeFrom" class="sel" style="flex:1"></select>
-            <span style="color:var(--muted);flex:0 0 auto;font-weight:600">a</span>
+            <span id="timeSep" style="color:var(--muted);flex:0 0 auto;font-weight:600">a</span>
             <select id="timeTo" class="sel" style="flex:1"></select>
           </div>
         </div>
@@ -1026,7 +1030,9 @@ function computeWhen(){
           + ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][d.getMonth()]+' '+d.getDate();
     }
   }
-  return (day+' '+fmtRange(parseInt($('timeFrom').value,10), parseInt($('timeTo').value,10))).trim();
+  var from=parseInt($('timeFrom').value,10), to=parseInt($('timeTo').value,10);
+  var time = (timeMode==='exact') ? (h12(from)+' '+mer(from)) : fmtRange(from,to);
+  return (day+' '+time).trim();
 }
 function fillTimes(){
   var o=''; for(var h=7;h<=21;h++) o+='<option value="'+h+'">'+h12(h)+' '+mer(h)+'</option>';
@@ -1038,6 +1044,17 @@ function updateDayChips(){
   [].forEach.call(document.querySelectorAll('[data-day]'), function(c){ c.classList.toggle('on', m[c.dataset.day]===true); });
 }
 function setDayOffset(n){ $('apptDate').value=ymd(dateOff(n)); updateDayChips(); buildMsg(); }
+
+var timeMode='range';   // 'range' (de…a…) | 'exact' (una hora)
+$('timeMode').addEventListener('click', function(e){
+  var b=e.target.closest('button'); if(!b) return;
+  timeMode=b.dataset.tm;
+  [].forEach.call(this.querySelectorAll('button'), function(x){ x.classList.toggle('on', x===b); });
+  var exact = (timeMode==='exact');
+  $('timeSep').style.display = exact ? 'none' : '';
+  $('timeTo').style.display  = exact ? 'none' : '';
+  buildMsg();
+});
 
 $('apptDate').value = ymd(new Date());   // default: hoy (día de la llamada)
 fillTimes(); updateDayChips();
