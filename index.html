@@ -119,9 +119,11 @@
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
-  #houseMap{height:440px;background:#e2e8f0}
+  .mapsGrid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  @media (max-width:760px){.mapsGrid{grid-template-columns:1fr}}
+  .mapBox{height:380px;background:#e2e8f0;border-radius:12px;overflow:hidden}
+  .mapTitle{font-size:13px;font-weight:700;color:var(--muted);margin:0 0 6px}
   .leaflet-container{border-radius:12px;font:inherit}
-  #mapSeg button{white-space:nowrap}
   .pin{filter:drop-shadow(0 2px 2px rgba(0,0,0,.4))}
 </style>
 </head>
@@ -129,23 +131,23 @@
 <header>
   <div class="logo">💧</div>
   <div>
-    <h1>Identificador de Llamadas · EPWQ</h1>
-    <div class="sub">Dueño en tiempo real · EPCAD / Doña Ana · USPhonebook · Mensaje de cita automático</div>
+    <h1>Call Identifier · EPWQ</h1>
+    <div class="sub">Live owner ID · EPCAD / Doña Ana · USPhonebook · Auto appointment message</div>
   </div>
-  <div class="who">Uso: Guillermo · Divine · Hector<br><span id="rcStatus">RingCentral: conecta el softphone ↘</span></div>
+  <div class="who">Users: Guillermo · Divine · Hector<br><span id="rcStatus">RingCentral: sign in to the softphone ↘</span></div>
 </header>
 
 <div class="wrap">
   <!-- ================= COLUMNA IZQUIERDA: FLUJO ================= -->
   <div class="card">
-    <h2><span class="step">1</span> Datos de la llamada</h2>
+    <h2><span class="step">1</span> Call Info</h2>
     <div class="body">
 
-      <!-- Banner de llamada entrante -->
+      <!-- Incoming call banner -->
       <div id="incoming">
         <div class="ic">📞</div>
         <div>
-          <div class="lbl">En espera de llamada</div>
+          <div class="lbl">Waiting for call</div>
           <div class="num" id="incNum">— — —</div>
           <div id="incMeta" style="font-size:13px;opacity:.92;margin-top:3px"></div>
         </div>
@@ -154,60 +156,60 @@
         </div>
       </div>
 
-      <!-- Controles de alerta -->
+      <!-- Alert controls -->
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
-        <button class="btn ghost sm" id="notifBtn">🔔 Activar alertas de escritorio</button>
-        <button class="btn ghost sm" id="muteBtn">🔊 Sonido: activado</button>
-        <button class="btn ghost sm" id="testAlert">▶︎ Probar alerta</button>
+        <button class="btn ghost sm" id="notifBtn">🔔 Enable desktop alerts</button>
+        <button class="btn ghost sm" id="muteBtn">🔊 Sound: on</button>
+        <button class="btn ghost sm" id="testAlert">▶︎ Test alert</button>
       </div>
 
-      <!-- ===== TRANSCRIPT EN VIVO (experimento, arriba/debajo de la llamada) ===== -->
+      <!-- ===== LIVE TRANSCRIPT ===== -->
       <div id="trBlock" style="margin:0 0 16px;border:1px solid var(--line);border-radius:12px;padding:12px;background:var(--soft)">
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-          <button class="btn primary sm" id="trBtn">🎧 Iniciar transcript</button>
-          <span class="badge" style="background:#fef3c7;color:#b45309">experimento</span>
-          <label style="font-size:12px;color:var(--muted);white-space:nowrap">Tu nombre:</label>
-          <input type="text" id="agentName" placeholder="Héctor" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px" />
-          <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Borrar</button>
+          <button class="btn primary sm" id="trBtn">🎧 Start transcript</button>
+          <span class="badge" style="background:#fef3c7;color:#b45309">beta</span>
+          <label style="font-size:12px;color:var(--muted);white-space:nowrap">Your name:</label>
+          <input type="text" id="agentName" placeholder="Hector" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px" />
+          <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Clear</button>
         </div>
-        <div class="hintline" id="trStatus" style="margin:0 0 8px">Al iniciar: <b>permite el micrófono</b> y <b>comparte el audio de esta pestaña</b>. Separa Agente/Cliente y detecta la dirección.</div>
+        <div class="hintline" id="trStatus" style="margin:0 0 8px">On start: <b>allow the microphone</b> and <b>share this tab's audio</b>. It separates Agent/Client and detects the address.</div>
         <div id="trHUD" style="height:240px;min-height:120px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;font-size:15px;line-height:1.6"></div>
-        <div class="hintline" style="margin-top:4px">Puedes <b>subir/bajar</b> para revisar la conversación, y jalar la esquina ↘ para hacerlo más grande.</div>
+        <div class="hintline" style="margin-top:4px">Scroll up/down to review the conversation, and drag the corner ↘ to make it bigger.</div>
       </div>
 
-      <!-- Condado -->
+      <!-- County -->
       <div class="field">
-        <label>¿De dónde viene la llamada?</label>
+        <label>Where is the call from?</label>
         <div class="seg" id="countySeg">
           <button data-c="epcad" class="on">EPCAD — El Paso, TX <span class="badge tx">TX</span></button>
           <button data-c="dona">Doña Ana — Las Cruces, NM <span class="badge nm">NM</span></button>
         </div>
       </div>
 
-      <!-- Teléfono: ya está arriba en el banner de llamada, aquí solo queda oculto para que el resto de la app siga funcionando -->
+      <!-- Phone: already shown in the call banner above; kept hidden so the rest of the app keeps working -->
       <div class="field" style="display:none">
         <input type="text" id="phone" placeholder="(832) 865-8324" inputmode="tel" autocomplete="off" />
         <button class="btn ghost" id="uspBtn" style="flex:0 0 auto">🔎 USPhonebook</button>
       </div>
 
-      <!-- Dirección con autocompletar -->
+      <!-- Address with autocomplete -->
       <div class="field">
-        <label>Dirección de la casa (con sugerencias)</label>
-        <input type="text" id="addr" placeholder="Empieza a escribir: 5513 Edinburg…" autocomplete="off" />
+        <label>House address (with suggestions)</label>
+        <input type="text" id="addr" placeholder="Start typing: 5513 Edinburg…" autocomplete="off" />
         <div class="ac" id="acBox"></div>
         <div id="addrSuggest" style="display:none;margin-top:8px"></div>
-        <div class="hintline">Escribe y elige la sugerencia correcta. Sesgado a la zona del condado seleccionado.</div>
+        <div class="hintline">Type and pick the correct suggestion. Biased to the selected county area.</div>
       </div>
 
-      <!-- Buscar dueño -->
+      <!-- Find owner -->
       <div class="field">
-        <button class="btn primary wide" id="ownerBtn">🏠 Buscar dueño &nbsp;→&nbsp; <span id="ownerBtnLbl">abrir EPCAD</span></button>
-        <div class="hintline">Copia la dirección y abre el buscador oficial. Pega con <b>⌘V / Ctrl+V</b> para ver al dueño.</div>
+        <button class="btn primary wide" id="ownerBtn">🏠 Find owner &nbsp;→&nbsp; <span id="ownerBtnLbl">open EPCAD</span></button>
+        <div class="hintline">Copies the address and opens the official search. Paste with <b>⌘V / Ctrl+V</b> to see the owner.</div>
       </div>
 
-      <!-- Nombre del dueño -->
+      <!-- Owner name -->
       <div class="field">
-        <label>Nombre del dueño (lo que aparece en el buscador)</label>
+        <label>Owner name (as shown in the search)</label>
         <input type="text" id="owner" placeholder="Ivan y Laura Cifuentes" autocomplete="off" />
       </div>
     </div>
@@ -216,40 +218,40 @@
   <!-- ================= COLUMNA DERECHA: CITA + MENSAJE ================= -->
   <div style="display:flex;flex-direction:column;gap:16px">
     <div class="card">
-      <h2><span class="step">2</span> Detalles de la cita</h2>
+      <h2><span class="step">2</span> Appointment Details</h2>
       <div class="body">
         <div class="field">
-          <label>¿Cuándo? · Día (calendario)</label>
+          <label>When? · Day (calendar)</label>
           <input type="date" id="apptDate" style="width:100%" />
           <div class="chips" style="margin-top:8px">
-            <span class="chip on" data-day="0">Hoy</span>
-            <span class="chip" data-day="1">Mañana</span>
-            <span class="chip" data-day="2">Pasado</span>
+            <span class="chip on" data-day="0">Today</span>
+            <span class="chip" data-day="1">Tomorrow</span>
           </div>
         </div>
         <div class="field">
-          <label>Horario</label>
+          <label>Time</label>
           <div class="seg" id="timeMode" style="margin-bottom:8px">
-            <button data-tm="range" class="on">Rango (de…a…)</button>
-            <button data-tm="exact">Hora exacta</button>
+            <button data-tm="range" class="on">Between (from…to…)</button>
+            <button data-tm="exact">Fixed time</button>
           </div>
           <div style="display:flex;align-items:center;gap:8px">
             <select id="timeFrom" class="sel" style="flex:1"></select>
-            <span id="timeSep" style="color:var(--muted);flex:0 0 auto;font-weight:600">a</span>
+            <span id="timeSep" style="color:var(--muted);flex:0 0 auto;font-weight:600">to</span>
             <select id="timeTo" class="sel" style="flex:1"></select>
           </div>
         </div>
 
         <div class="row">
           <div class="field">
-            <label>Idioma</label>
+            <label>Language</label>
             <div class="chips" id="langChips">
-              <span class="chip on" data-lang="Espanol">Espanol</span>
-              <span class="chip" data-lang="Ingles">Ingles</span>
+              <span class="chip on" data-lang="Spanish">Spanish</span>
+              <span class="chip" data-lang="English">English</span>
+              <span class="chip" data-lang="Bilingual">Bilingual</span>
             </div>
           </div>
           <div class="field">
-            <label>Rol</label>
+            <label>Role</label>
             <div class="chips" id="roleChips">
               <span class="chip on" data-role="owner">owner</span>
               <span class="chip" data-role="renter">renter</span>
@@ -260,42 +262,47 @@
     </div>
 
     <div class="card">
-      <h2><span class="step">3</span> Mensaje de la cita (FWD)</h2>
+      <h2><span class="step">3</span> Appointment Message (FWD)</h2>
       <div class="body">
         <div class="msgbox" id="msg"></div>
         <div class="row" style="margin-top:12px">
-          <button class="btn primary" id="copyMsg">📋 Copiar mensaje</button>
-          <button class="btn ghost" id="smsMsg">💬 Prellenar SMS en RingCentral</button>
+          <button class="btn primary" id="copyMsg">📋 Copy message</button>
+          <button class="btn ghost" id="smsMsg">💬 Prefill SMS in RingCentral</button>
         </div>
-        <div class="hintline">Copia y pégalo en el grupo de WhatsApp, o prellena el SMS en RingCentral (tú das “enviar”).</div>
+        <div class="hintline">Copy and paste it in the WhatsApp group, or prefill the SMS in RingCentral (you press “send”).</div>
       </div>
     </div>
   </div>
 
-  <!-- ===== VISTA DE LA CASA / ZONA (mapa) ===== -->
+  <!-- ===== HOUSE & AREA VIEW (two maps) ===== -->
   <div class="card" id="mapCard" style="grid-column:1/-1;display:none">
-    <h2>🗺️ Vista de la casa y la zona</h2>
+    <h2>🗺️ House &amp; area view</h2>
     <div class="body">
       <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:12px">
-        <div class="seg" id="mapSeg">
-          <button data-m="sat" class="on">🛰️ Techo (¿solares?)</button>
-          <button data-m="zona">🗺️ Zona (calles)</button>
-        </div>
-        <a id="gmapsBtn" class="btn ghost sm" href="#" target="_blank" rel="noopener" style="flex:0 0 auto">🔎 Abrir en Google Maps (satélite)</a>
-        <span class="hintline" style="margin:0;flex:1;min-width:200px">Paneles solares en el techo = cliente comprador → <b>cita potencial</b>. Vista “Zona” para ubicar por qué calles queda.</span>
+        <a id="gmapsBtn" class="btn ghost sm" href="#" target="_blank" rel="noopener" style="flex:0 0 auto">🔎 Open in Google Maps (satellite)</a>
+        <span class="hintline" style="margin:0;flex:1;min-width:200px">Solar panels on the roof = buyer client → <b>potential appointment</b>. The area map highlights the main streets.</span>
       </div>
-      <div id="houseMap"></div>
+      <div class="mapsGrid">
+        <div>
+          <div class="mapTitle">🛰️ Roof (solar panels?)</div>
+          <div id="houseMapSat" class="mapBox"></div>
+        </div>
+        <div>
+          <div class="mapTitle">🗺️ Area — main streets</div>
+          <div id="houseMapZone" class="mapBox"></div>
+        </div>
+      </div>
     </div>
   </div>
 
 </div>
 
 <div class="footnote">
-  Sugerencias de dirección por Google Places (o OpenStreetMap gratis si no hay API key). Búsqueda de dueño:
+  Address suggestions by Google Places (or free OpenStreetMap if no API key). Owner search:
   <a class="link" href="https://go.epcad.org/search" target="_blank" rel="noopener">EPCAD</a> ·
   <a class="link" href="https://assessor.donaanacounty.org/" target="_blank" rel="noopener">Doña Ana (EagleWeb)</a> ·
-  Teléfono: <a class="link" href="https://www.usphonebook.com/" target="_blank" rel="noopener">USPhonebook</a>.
-  El softphone flotante de RingCentral aparece abajo a la derecha una vez que inicias sesión.
+  Phone: <a class="link" href="https://www.usphonebook.com/" target="_blank" rel="noopener">USPhonebook</a>.
+  The floating RingCentral softphone appears at the bottom-right once you sign in.
 </div>
 
 <div id="toast"></div>
@@ -306,7 +313,7 @@
 ============================================================ */
 var state = {
   county: 'epcad',           // 'epcad' (El Paso TX) | 'dona' (Doña Ana NM)
-  lang: 'Espanol',
+  lang: 'Spanish',
   role: 'owner',
   addrCompact: '',           // "5513 Edinburg" para el mensaje
 };
@@ -379,7 +386,7 @@ function setCounty(c){
   if(c!=='epcad' && c!=='dona') return;
   state.county = c;
   [].forEach.call($('countySeg').querySelectorAll('button'), function(x){ x.classList.toggle('on', x.dataset.c===c); });
-  $('ownerBtnLbl').textContent = c==='epcad' ? 'abrir EPCAD' : 'abrir Doña Ana';
+  $('ownerBtnLbl').textContent = c==='epcad' ? 'open EPCAD' : 'open Doña Ana';
 }
 // Auto-rutea al portal correcto según el estado de la dirección (TX → EPCAD, NM → Doña Ana)
 function autoRoute(stateStr){
@@ -406,7 +413,7 @@ function uspUrl(s){
 }
 function openUsp(s){
   var u = uspUrl(s);
-  if(!u){ toast('Escribe un teléfono de 10 dígitos'); return; }
+  if(!u){ toast('Enter a 10-digit phone number'); return; }
   window.open(u, '_blank', 'noopener');
 }
 $('uspBtn').addEventListener('click', function(){ openUsp($('phone').value); });
@@ -422,7 +429,7 @@ function clearAC(){ $('acBox').classList.remove('open'); $('acBox').innerHTML=''
 
 function renderAC(list){
   var box = $('acBox');
-  if(!list.length){ box.innerHTML = '<div class="hint">Sin sugerencias — puedes escribir la dirección a mano.</div>'; box.classList.add('open'); return; }
+  if(!list.length){ box.innerHTML = '<div class="hint">No suggestions — you can type the address manually.</div>'; box.classList.add('open'); return; }
   box.innerHTML = list.map(function(it,i){
     return '<div class="opt" data-i="'+i+'"><div class="main">'+esc(it.main)+'</div><div class="sub">'+esc(it.sub)+'</div></div>';
   }).join('');
@@ -531,9 +538,9 @@ var OWNER_URL = {
 };
 function searchOwner(){
   var addr = (state.addrCompact || $('addr').value || '').trim();
-  if(!addr){ toast('Escribe primero la dirección'); $('addr').focus(); return; }
+  if(!addr){ toast('Type the address first'); $('addr').focus(); return; }
   copy(addr).then(function(){
-    toast('Dirección copiada — pega con ⌘V / Ctrl+V en el buscador');
+    toast('Address copied — paste with ⌘V / Ctrl+V in the search');
   });
   window.open(OWNER_URL[state.county], '_blank', 'noopener');
 }
@@ -591,7 +598,7 @@ function copy(text){
   });
 }
 $('copyMsg').addEventListener('click', function(){
-  copy($('msg').textContent).then(function(){ toast('Mensaje copiado ✔'); });
+  copy($('msg').textContent).then(function(){ toast('Message copied ✔'); });
 });
 
 /* Prellenar SMS en el widget de RingCentral (tú das enviar) */
@@ -600,70 +607,75 @@ $('smsMsg').addEventListener('click', function(){
   var text = $('msg').textContent;
   var frame = document.querySelector('#rc-widget-adapter-frame');
   if(!frame || !frame.contentWindow){
-    toast('Inicia sesión en el softphone de RingCentral primero'); return;
+    toast('Sign in to the RingCentral softphone first'); return;
   }
   frame.contentWindow.postMessage({
     type:'rc-adapter-new-sms', phoneNumber: phone ? '+1'+phone : '', text:text, conversation:true
   }, '*');
-  toast('SMS prellenado en RingCentral — revisa y envía');
+  toast('SMS prefilled in RingCentral — review and send');
 });
 
 /* ============================================================
-   MAPA: 🛰️ Techo (paneles solares) + 🗺️ Zona (calles)
-   Usa Google Maps (satélite nítido) si la key funciona;
-   si no, cae automáticamente a Esri + OpenStreetMap (gratis).
+   MAPS: 🛰️ Roof (solar) + 🗺️ Area (main streets highlighted)
+   Two maps at once. Google if the key works; else Esri + OSM (free).
 ============================================================ */
-var mapMode='sat', lastLat=null, lastLng=null;
-
-/* ---- Google Maps ---- */
-var gmap=null, gmarker=null;
+var lastLat=null, lastLng=null;
 function googleMapsOK(){ return !!(window.google && window.google.maps && !window.__googleBad); }
-window.gm_authFailure = function(){ window.__googleBad=true; googleReady=false; };  // key mala/no autorizada → respaldo
-function showGoogleMap(){
-  if(!gmap){
-    gmap = new google.maps.Map(document.getElementById('houseMap'), {
-      center:{lat:lastLat,lng:lastLng}, zoom:20, mapTypeId:'satellite',
-      streetViewControl:false, mapTypeControl:false, fullscreenControl:true, tilt:0
+window.gm_authFailure = function(){ window.__googleBad=true; googleReady=false; };
+
+// Style that HIGHLIGHTS main streets: highways orange & thick, arterials blue, local streets faded
+var ZONE_STYLES = [
+  { featureType:'road.highway', elementType:'geometry.stroke', stylers:[{color:'#9a3412'}] },
+  { featureType:'road.highway', elementType:'geometry.fill',   stylers:[{color:'#f97316'},{weight:4}] },
+  { featureType:'road.highway', elementType:'labels.text.fill',stylers:[{color:'#9a3412'}] },
+  { featureType:'road.arterial',elementType:'geometry',        stylers:[{color:'#2563eb'},{weight:2.6}] },
+  { featureType:'road.arterial',elementType:'labels.text.fill',stylers:[{color:'#1d4ed8'}] },
+  { featureType:'road.local',   elementType:'geometry',        stylers:[{color:'#e5e7eb'}] },
+  { featureType:'road.local',   elementType:'labels',          stylers:[{visibility:'off'}] },
+  { featureType:'poi',                                          stylers:[{visibility:'simplified'}] },
+  { featureType:'transit',                                      stylers:[{visibility:'off'}] }
+];
+
+/* ---- Google Maps (two) ---- */
+var gmapSat=null, gmSat=null, gmapZone=null, gmZone=null;
+function showGoogleMaps(){
+  var pos = {lat:lastLat,lng:lastLng};
+  if(!gmapSat){
+    gmapSat = new google.maps.Map(document.getElementById('houseMapSat'), {
+      center:pos, zoom:20, mapTypeId:'satellite', streetViewControl:false, mapTypeControl:false, fullscreenControl:true, tilt:0
     });
-    gmarker = new google.maps.Marker({map:gmap, position:{lat:lastLat,lng:lastLng}});
-  }else{
-    gmap.setCenter({lat:lastLat,lng:lastLng}); gmarker.setPosition({lat:lastLat,lng:lastLng});
-  }
-  applyGoogleMode();
-}
-function applyGoogleMode(){
-  if(!gmap) return;
-  gmap.setCenter({lat:lastLat,lng:lastLng});
-  if(mapMode==='sat'){ gmap.setMapTypeId('satellite'); gmap.setZoom(20); }
-  else { gmap.setMapTypeId('roadmap'); gmap.setZoom(15); }
+    gmSat = new google.maps.Marker({map:gmapSat, position:pos});
+  } else { gmapSat.setCenter(pos); gmSat.setPosition(pos); }
+  if(!gmapZone){
+    gmapZone = new google.maps.Map(document.getElementById('houseMapZone'), {
+      center:pos, zoom:14, mapTypeId:'roadmap', styles:ZONE_STYLES,
+      streetViewControl:false, mapTypeControl:false, fullscreenControl:true
+    });
+    gmZone = new google.maps.Marker({map:gmapZone, position:pos});
+  } else { gmapZone.setCenter(pos); gmZone.setPosition(pos); }
 }
 
-/* ---- Leaflet (gratis, respaldo) ---- */
-var lmap=null, lmarker=null, LSAT, LLBL, LOSM;
-function ensureLeaflet(){
-  if(lmap || typeof L==='undefined') return;
-  lmap = L.map('houseMap', {zoomControl:true, scrollWheelZoom:true});
-  LSAT = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:21, maxNativeZoom:19, attribution:'Imágenes © Esri'});
-  LLBL = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {maxZoom:21, maxNativeZoom:19});
-  LOSM = L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'© OpenStreetMap'});
+/* ---- Leaflet (free fallback) ---- */
+var lmapSat=null, lmSat=null, lmapZone=null, lmZone=null;
+function pinIcon(){ return L.divIcon({html:'📍',className:'pin',iconSize:[28,28],iconAnchor:[14,26]}); }
+function showLeafletMaps(){
+  if(typeof L==='undefined') return;
+  var pos=[lastLat,lastLng];
+  if(!lmapSat){
+    lmapSat = L.map('houseMapSat', {zoomControl:true});
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {maxZoom:21, maxNativeZoom:19, attribution:'© Esri'}).addTo(lmapSat);
+    L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/Reference/World_Transportation/MapServer/tile/{z}/{y}/{x}', {maxZoom:21, maxNativeZoom:19}).addTo(lmapSat);
+    lmSat = L.marker(pos,{icon:pinIcon()}).addTo(lmapSat);
+  } else lmSat.setLatLng(pos);
+  lmapSat.setView(pos, 19);
+  if(!lmapZone){
+    lmapZone = L.map('houseMapZone', {zoomControl:true});
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {maxZoom:19, attribution:'© OpenStreetMap'}).addTo(lmapZone);
+    lmZone = L.marker(pos,{icon:pinIcon()}).addTo(lmapZone);
+  } else lmZone.setLatLng(pos);
+  lmapZone.setView(pos, 14);
+  setTimeout(function(){ try{ lmapSat.invalidateSize(); lmapZone.invalidateSize(); }catch(e){} }, 80);
 }
-function applyLeafletMode(){
-  if(!lmap || lastLat==null) return;
-  [LSAT,LLBL,LOSM].forEach(function(l){ if(l && lmap.hasLayer(l)) lmap.removeLayer(l); });
-  if(mapMode==='sat'){ LSAT.addTo(lmap); LLBL.addTo(lmap); lmap.setView([lastLat,lastLng], 20); }
-  else { LOSM.addTo(lmap); lmap.setView([lastLat,lastLng], 14); }
-}
-function showLeafletMap(){
-  ensureLeaflet();
-  if(!lmap) return;
-  if(lmarker){ lmarker.setLatLng([lastLat,lastLng]); }
-  else { lmarker = L.marker([lastLat,lastLng], {icon:L.divIcon({html:'📍',className:'pin',iconSize:[28,28],iconAnchor:[14,26]})}).addTo(lmap); }
-  applyLeafletMode();
-  setTimeout(function(){ lmap.invalidateSize(); applyLeafletMode(); }, 80);
-}
-
-/* ---- Dispatcher ---- */
-function applyMode(){ if(gmap) applyGoogleMode(); else applyLeafletMode(); }
 
 function setLatLng(lat,lng){
   lat=parseFloat(lat); lng=parseFloat(lng);
@@ -671,16 +683,9 @@ function setLatLng(lat,lng){
   lastLat=lat; lastLng=lng;
   $('mapCard').style.display='';
   $('gmapsBtn').href = 'https://www.google.com/maps/place/'+lat+','+lng+'/@'+lat+','+lng+',20z/data=!3m1!1e3';
-  if(googleMapsOK()) showGoogleMap();   // Google nítido
-  else showLeafletMap();                // respaldo gratis
+  if(googleMapsOK()) showGoogleMaps();   // sharp Google maps
+  else showLeafletMaps();                // free fallback
 }
-
-$('mapSeg').addEventListener('click', function(e){
-  var b=e.target.closest('button'); if(!b) return;
-  mapMode = b.dataset.m;
-  [].forEach.call(this.querySelectorAll('button'), function(x){ x.classList.toggle('on', x===b); });
-  applyMode();
-});
 
 /* ============================================================
    RINGCENTRAL EMBEDDABLE (softphone + eventos de llamada)
@@ -740,7 +745,7 @@ function titleFlashStop(){ if(titleTimer){ clearInterval(titleTimer); titleTimer
 function notifyIncoming(num){
   if(!('Notification' in window) || Notification.permission!=='granted') return;
   try{
-    var n=new Notification('📞 Llamada entrante', { body: num+' — contesta en la app EPWQ', tag:'epwq-call', requireInteraction:true });
+    var n=new Notification('📞 Incoming call', { body: num+' — answer in the EPWQ app', tag:'epwq-call', requireInteraction:true });
     n.onclick=function(){ window.focus(); n.close(); };
   }catch(e){}
 }
@@ -750,19 +755,19 @@ function alertStop(){ ringStop(); titleFlashStop(); }
 
 // Botón: activar notificaciones de escritorio (pide permiso al navegador)
 $('notifBtn').addEventListener('click', function(){
-  if(!('Notification' in window)){ toast('Este navegador no soporta notificaciones'); return; }
+  if(!('Notification' in window)){ toast('This browser does not support notifications'); return; }
   Notification.requestPermission().then(function(p){
-    if(p==='granted'){ notifDone(); toast('Alertas de escritorio activadas ✔'); }
-    else { toast('El navegador no dio permiso de notificaciones'); }
+    if(p==='granted'){ notifDone(); toast('Desktop alerts enabled ✔'); }
+    else { toast('The browser did not grant notification permission'); }
   });
 });
-function notifDone(){ var b=$('notifBtn'); b.textContent='🔔 Alertas activadas ✔'; b.disabled=true; b.style.opacity=.7; }
+function notifDone(){ var b=$('notifBtn'); b.textContent='🔔 Alerts on ✔'; b.disabled=true; b.style.opacity=.7; }
 if(('Notification' in window) && Notification.permission==='granted'){ notifDone(); }
 
 // Botón: silenciar / activar el timbre de la app
 $('muteBtn').addEventListener('click', function(){
   soundOn=!soundOn;
-  this.textContent = soundOn ? '🔊 Sonido: activado' : '🔇 Sonido: apagado';
+  this.textContent = soundOn ? '🔊 Sound: on' : '🔇 Sound: off';
   if(!soundOn) ringStop();
 });
 
@@ -795,7 +800,7 @@ window.addEventListener('message', function(e){
 
   // Login / estado
   if(d.type === 'rc-login-status-notify'){
-    $('rcStatus').textContent = d.loggedIn ? 'RingCentral: conectado ✔' : 'RingCentral: conecta el softphone ↘';
+    $('rcStatus').textContent = d.loggedIn ? 'RingCentral: connected ✔' : 'RingCentral: sign in to the softphone ↘';
   }
 
   // Llamada entrante / contestada / actualizada — escucha varios eventos por si uno no trae los datos
@@ -842,11 +847,11 @@ function areaLoc(num){ var d=digits(num); if(d.length!==10) return ''; return AR
 
 function onIncoming(num, answered, from){
   from = from || {};
-  var pretty = prettyPhone(num) || 'Número oculto';
+  var pretty = prettyPhone(num) || 'Hidden number';
   var box = $('incoming');
   box.classList.add('live');
   $('incNum').textContent = pretty;
-  box.querySelector('.lbl').textContent = answered ? 'Llamada en curso' : '📞 ¡Llamada entrante!';
+  box.querySelector('.lbl').textContent = answered ? 'Call in progress' : '📞 Incoming call!';
   $('incActions').style.display = num ? 'flex' : 'none';
   if(num){ $('phone').value = pretty; buildMsg(); }
 
@@ -855,7 +860,7 @@ function onIncoming(num, answered, from){
   var loc  = areaLoc(num);
   var meta = [];
   if(name) meta.push('👤 ' + name);
-  if(loc)  meta.push('📍 área: ' + loc);
+  if(loc)  meta.push('📍 area: ' + loc);
   $('incMeta').textContent = meta.join('   ·   ');
 
   try{ box.scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
@@ -865,7 +870,7 @@ function onIncoming(num, answered, from){
 function callEnded(){
   alertStop();
   var box = $('incoming'); box.classList.remove('live');
-  box.querySelector('.lbl').textContent = 'En espera de llamada';
+  box.querySelector('.lbl').textContent = 'Waiting for call';
   $('incNum').textContent = '— — —';
   $('incMeta').textContent = '';
   $('incActions').style.display = 'none';
@@ -912,7 +917,7 @@ async function trStart(){
       preferCurrentTab:true,
       selfBrowserSurface:'include'
     });
-    if(!trStream.getAudioTracks().length){ toast('Marca “Compartir audio de la pestaña”'); return trStop(); }
+    if(!trStream.getAudioTracks().length){ toast('Check “Share tab audio”'); return trStop(); }
     trStream.getVideoTracks().forEach(function(t){ t.stop(); });
     trStream.getAudioTracks()[0].onended = function(){ trStop(); };
 
@@ -939,10 +944,10 @@ async function trStart(){
 
     trRunning=true; trLastAddr='';
     $('trBtn').textContent='⏹ Detener transcript'; $('trBtn').disabled=false;
-    trSetStatus('🎧 Escuchando la llamada…');
+    trSetStatus('🎧 Listening to the call…');
     $('trHUD').dataset.full='';
   }catch(err){
-    toast('No se pudo iniciar el transcript');
+    toast('Could not start the transcript');
     trSetStatus('Error: ' + (err && err.message || err));
     trStop();
   }
@@ -1006,11 +1011,11 @@ function trShowSuggest(addr){
   $('addr').value = addr; state.addrCompact = addr; buildMsg();   // auto-llena la dirección detectada en el campo
   var el = $('addrSuggest'); el.style.display = '';
   el.innerHTML = '<div style="background:#dcfce7;border:1px solid #86efac;border-radius:10px;padding:9px 11px">'
-    + '<div style="font-size:14px;margin-bottom:6px">📍 Detectada de la llamada: <b id="trSuggestTxt">' + esc(addr) + '</b> — ¿es correcta?</div>'
+    + '<div style="font-size:14px;margin-bottom:6px">📍 Detected from the call: <b id="trSuggestTxt">' + esc(addr) + '</b> — is it correct?</div>'
     + '<div style="display:flex;gap:8px;flex-wrap:wrap">'
-    + '<button class="btn primary sm" id="trConfirm">✓ Confirmar y buscar dueño</button>'
-    + '<button class="btn ghost sm" id="trEdit">✏️ Editar</button>'
-    + '<button class="btn ghost sm" id="trDismiss">✕ Descartar</button></div></div>';
+    + '<button class="btn primary sm" id="trConfirm">✓ Confirm &amp; find owner</button>'
+    + '<button class="btn ghost sm" id="trEdit">✏️ Edit</button>'
+    + '<button class="btn ghost sm" id="trDismiss">✕ Dismiss</button></div></div>';
   $('trConfirm').onclick = trConfirm;
   $('trEdit').onclick = function(){ el.style.display='none'; $('addr').focus(); $('addr').select(); };
   $('trDismiss').onclick = function(){ el.style.display = 'none'; };
@@ -1060,7 +1065,7 @@ function trStop(){
   try{ if(trStream) trStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
   trNode=trSink=trCtx=trStream=null; trBuf=[];
   $('trBtn').textContent='🎧 Iniciar transcript'; $('trBtn').disabled=false;
-  trSetStatus('Detenido. Comparte el audio de la pestaña para empezar.');
+  trSetStatus('Stopped. To start: share this tab\'s audio.');
 }
 
 /* ============================================================
@@ -1080,7 +1085,7 @@ $('trClear').addEventListener('click', function(){
   var el=$('trHUD'); el.innerHTML=''; el.dataset.full=''; el.dataset.last='';
   $('addrSuggest').style.display='none';
   dgClientBuf=''; trLastAddr='';
-  toast('Transcript borrado');
+  toast('Transcript cleared');
 });
 
 function clamp16(f){ var s=Math.max(-1,Math.min(1,f)); return s<0 ? s*0x8000 : s*0x7FFF; }
@@ -1088,10 +1093,10 @@ function clamp16(f){ var s=Math.max(-1,Math.min(1,f)); return s<0 ? s*0x8000 : s
 async function dgStart(){
   $('trBtn').disabled=true;
   try{
-    trSetStatus('⏳ Conectando…');
+    trSetStatus('⏳ Connecting…');
     // 1) key temporal desde tu Supabase (server-side)
     var kd = await fetch(DEEPGRAM_KEY_URL).then(function(r){ return r.json(); });
-    if(!kd || !kd.key) throw new Error('No se pudo obtener la key (Supabase)');
+    if(!kd || !kd.key) throw new Error('Could not get the key (Supabase)');
 
     // 2) micrófono (Agente) + audio de la pestaña (Cliente)
     dgMicStream = await navigator.mediaDevices.getUserMedia({ audio:true });
@@ -1100,7 +1105,7 @@ async function dgStart(){
       preferCurrentTab:true,          // pide directo ESTA pestaña (donde está la llamada), sin listar las demás
       selfBrowserSurface:'include'
     });
-    if(!dgTabStream.getAudioTracks().length){ toast('Marca “Compartir audio de la pestaña”'); return dgStop(); }
+    if(!dgTabStream.getAudioTracks().length){ toast('Check “Share tab audio”'); return dgStop(); }
     dgTabStream.getVideoTracks().forEach(function(t){ t.stop(); });
     dgTabStream.getAudioTracks()[0].onended = function(){ dgStop(); };
 
@@ -1120,9 +1125,9 @@ async function dgStart(){
     var qs = 'model=nova-3&language=multi&endpointing=100&multichannel=true&channels=2&sample_rate=16000&encoding=linear16&punctuate=true&smart_format=true&interim_results=false';
     dgWS = new WebSocket('wss://api.deepgram.com/v1/listen?'+qs, ['token', kd.key]);
     dgWS.binaryType='arraybuffer';
-    dgWS.onopen  = function(){ trSetStatus('🎧 Escuchando… (Agente + Cliente en vivo)'); };
-    dgWS.onerror = function(){ trSetStatus('⚠️ Error de conexión con Deepgram'); };
-    dgWS.onclose = function(){ if(dgRunning) trSetStatus('Conexión cerrada.'); };
+    dgWS.onopen  = function(){ trSetStatus('🎧 Listening… (Agent + Client live)'); };
+    dgWS.onerror = function(){ trSetStatus('⚠️ Deepgram connection error'); };
+    dgWS.onclose = function(){ if(dgRunning) trSetStatus('Connection closed.'); };
     dgWS.onmessage = function(m){
       var d; try{ d=JSON.parse(m.data); }catch(e){ return; }
       if(!d.channel || !d.channel.alternatives) return;
@@ -1145,22 +1150,22 @@ async function dgStart(){
     dgRunning=true; trLastAddr=''; dgClientBuf='';
     $('trHUD').innerHTML=''; $('trHUD').dataset.full='';
     $('trBtn').textContent='⏹ Detener transcript'; $('trBtn').disabled=false;
-    trSetStatus('🎧 Escuchando… (Agente + Cliente en vivo)');
+    trSetStatus('🎧 Listening… (Agent + Client live)');
 
     // A los ~7s: si el canal del Cliente sigue casi mudo comparado al mic, avisa qué revisar
     clearTimeout(dgWarnTimer);
     dgWarnTimer = setTimeout(function(){
       if(!dgRunning) return;
       if(dgEnergy[1] < dgEnergy[0]*0.05){
-        trSetStatus('⚠️ No estoy captando el audio de la <b>llamada</b> (canal Cliente). '
-          + 'Detén y vuelve a iniciar, y marca <b>"Compartir audio de la pestaña"</b>. '
-          + '<button id="trRetryShare" class="btn ghost sm" style="margin-left:6px">🔁 Reintentar</button>');
+        trSetStatus('⚠️ Not capturing the <b>call</b> audio (Client channel). '
+          + 'Stop and start again, and check <b>"Share tab audio"</b>. '
+          + '<button id="trRetryShare" class="btn ghost sm" style="margin-left:6px">🔁 Retry</button>');
         var rb=document.getElementById('trRetryShare');
         if(rb) rb.onclick=function(){ dgStop(); dgStart(); };
       }
     }, 7000);
   }catch(err){
-    toast('No se pudo iniciar el transcript');
+    toast('Could not start the transcript');
     trSetStatus('Error: ' + (err && err.message || err));
     dgStop();
   }
@@ -1192,7 +1197,7 @@ function dgStop(){
   try{ if(dgTabStream) dgTabStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
   dgWS=dgProc=dgCtx=dgMicStream=dgTabStream=null;
   $('trBtn').textContent='🎧 Iniciar transcript'; $('trBtn').disabled=false;
-  trSetStatus('Detenido. Al iniciar: permite micrófono + comparte el audio de la pestaña.');
+  trSetStatus('Stopped. To start: allow the microphone + share this tab\'s audio.');
 }
 
 /* ============================================================
