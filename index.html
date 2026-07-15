@@ -312,6 +312,7 @@
         </div>
         <div>
           <div class="mapTitle">🗺️ Area — main streets</div>
+          <div id="zoneStreets" style="font-size:15px;margin:0 0 8px;line-height:1.6"></div>
           <div id="houseMapZone" class="mapBox"></div>
         </div>
       </div>
@@ -693,11 +694,65 @@ function showGoogleMaps(){
   } else { gmapSat.setCenter(pos); gmSat.setPosition(pos); }
   if(!gmapZone){
     gmapZone = new google.maps.Map(document.getElementById('houseMapZone'), {
-      center:pos, zoom:15, mapTypeId:'roadmap', styles:ZONE_STYLES,
+      center:pos, zoom:14, mapTypeId:'roadmap', styles:ZONE_STYLES,
       streetViewControl:false, mapTypeControl:false, fullscreenControl:true
     });
     gmZone = new google.maps.Marker({map:gmapZone, position:pos});
   } else { gmapZone.setCenter(pos); gmZone.setPosition(pos); }
+  addMainStreetLabels(lastLat, lastLng);   // etiquetas grandes de calles principales (OpenStreetMap)
+}
+
+/* ---- Etiquetas GRANDES de las calles principales (Google no deja agrandar sus letras) ----
+   Saca las calles principales cercanas de OpenStreetMap y pone pastillas blancas con letra grande. */
+var OVERPASS_EPS = ['https://maps.mail.ru/osm/tools/overpass/api/interpreter','https://overpass-api.de/api/interpreter','https://overpass.kumi.systems/api/interpreter'];
+var zoneLabels = [];
+function clearZoneLabels(){ zoneLabels.forEach(function(m){ try{ m.setMap(null); }catch(e){} }); zoneLabels=[]; }
+
+function streetLabelIcon(name){
+  var t = String(name).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+  var w = Math.min(230, Math.max(56, t.length*8.4 + 20)), h = 26;
+  var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="'+w+'" height="'+h+'">'
+    + '<rect x="1.5" y="1.5" width="'+(w-3)+'" height="'+(h-3)+'" rx="7" fill="#ffffff" fill-opacity="0.94" stroke="#1d4ed8" stroke-width="1.6"/>'
+    + '<text x="'+(w/2)+'" y="17.5" font-family="Arial,Helvetica,sans-serif" font-size="14" font-weight="700" fill="#1e3a8a" text-anchor="middle">'+t+'</text></svg>';
+  return { url:'data:image/svg+xml;charset=UTF-8,'+encodeURIComponent(svg), scaledSize:new google.maps.Size(w,h), anchor:new google.maps.Point(w/2,h/2) };
+}
+function hwyRank(h){ return ({motorway:0,trunk:1,primary:2,secondary:3,tertiary:4})[h]; }
+
+function addMainStreetLabels(lat, lng){
+  clearZoneLabels();
+  var listEl = document.getElementById('zoneStreets');
+  if(listEl) listEl.innerHTML = '<span style="color:var(--muted)">Loading main streets…</span>';
+  var q = '[out:json][timeout:20];way(around:1700,'+lat+','+lng+')["highway"~"^(motorway|trunk|primary|secondary|tertiary)$"]["name"];out geom;';
+  var i = 0;
+  function tryEp(){
+    if(i >= OVERPASS_EPS.length){ if(listEl) listEl.innerHTML=''; return; }
+    fetch(OVERPASS_EPS[i], { method:'POST', headers:{'Content-Type':'text/plain'}, body:q })
+      .then(function(r){ if(!r.ok) throw 0; return r.json(); })
+      .then(render)
+      .catch(function(){ i++; tryEp(); });
+  }
+  function render(d){
+    var byName = {}, elems = (d && d.elements) || [];
+    elems.forEach(function(w){
+      var name = w.tags && w.tags.name; if(!name || !w.geometry) return;
+      var best=null, bd=1e18;
+      w.geometry.forEach(function(g){ var dd=(g.lat-lat)*(g.lat-lat)+(g.lon-lng)*(g.lon-lng); if(dd<bd){ bd=dd; best=g; } });
+      if(best && (!byName[name] || bd < byName[name].d)){
+        byName[name] = { name:name, lat:best.lat, lng:best.lon, d:bd, rank:hwyRank(w.tags.highway) };
+      }
+    });
+    var streets = Object.keys(byName).map(function(k){ return byName[k]; })
+      .sort(function(a,b){ return (a.rank-b.rank) || (a.d-b.d); }).slice(0,9);
+    if(gmapZone){
+      streets.forEach(function(s){
+        zoneLabels.push(new google.maps.Marker({ map:gmapZone, position:{lat:s.lat,lng:s.lng}, icon:streetLabelIcon(s.name), clickable:false, zIndex:900 }));
+      });
+    }
+    if(listEl) listEl.innerHTML = streets.length
+      ? ('🛣️ <b>Main streets nearby:</b> ' + streets.map(function(s){ return esc(s.name); }).join(' &nbsp;·&nbsp; '))
+      : '';
+  }
+  tryEp();
 }
 
 /* ---- Leaflet (free fallback) ---- */
