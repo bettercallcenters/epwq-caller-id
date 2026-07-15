@@ -261,6 +261,7 @@
           <div id="ownerLaunchMsg" style="color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:14px"></div>
           <a id="ownerLaunchBtn" class="btn" href="#" target="_blank" rel="noopener" style="font-size:15px;display:inline-block">↗ Open <span id="ownerLaunchSite">site</span> in a new tab</a>
         </div>
+        <div id="ownerGis" style="display:none;border:1px solid var(--line);border-radius:12px;background:#fff;padding:16px 16px"></div>
       </div>
 
       <!-- Owner name -->
@@ -699,19 +700,30 @@ function parseHouseStreet(addr){
 function ownerShowEmbed(url, title){
   $('ownerPanelTitle').textContent = title || '🏠 County record — owner';
   $('ownerFrame').style.display=''; $('ownerFrame').src = url;
-  $('ownerLaunch').style.display='none';
-  $('ownerPanelOpen').href = url;
+  $('ownerLaunch').style.display='none'; $('ownerGis').style.display='none';
+  $('ownerPanelOpen').href = url; $('ownerPanelOpen').style.display='';
   $('ownerPanel').style.display = '';
   try{ $('ownerPanel').scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
 }
 function ownerShowLaunch(url, siteName, title, msgHtml){
   $('ownerPanelTitle').textContent = title;
   $('ownerFrame').style.display='none'; $('ownerFrame').src='about:blank';
+  $('ownerGis').style.display='none';
   $('ownerLaunch').style.display='';
   $('ownerLaunchSite').textContent = siteName;
   $('ownerLaunchBtn').href = url;
   $('ownerLaunchMsg').innerHTML = msgHtml;
-  $('ownerPanelOpen').href = url;
+  $('ownerPanelOpen').href = url; $('ownerPanelOpen').style.display='';
+  $('ownerPanel').style.display = '';
+  try{ $('ownerPanel').scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
+}
+// Panel con la ficha del GIS (Doña Ana) — se llena en fetchCountyOwner
+function ownerShowGis(title){
+  $('ownerPanelTitle').textContent = title;
+  $('ownerFrame').style.display='none'; $('ownerFrame').src='about:blank';
+  $('ownerLaunch').style.display='none';
+  $('ownerGis').style.display='';
+  $('ownerPanelOpen').style.display='none';
   $('ownerPanel').style.display = '';
   try{ $('ownerPanel').scrollIntoView({behavior:'smooth', block:'center'}); }catch(e){}
 }
@@ -721,41 +733,63 @@ function searchOwner(){
   var hs = parseHouseStreet(addr);
   if(state.county === 'epcad'){
     var url = 'https://epcad.org/Search?Keywords=' + encodeURIComponent(hs.clean || addr);
-    ownerShowEmbed(url, '🏠 EPCAD — owner (El Paso, TX)');
-    epcadFetchOwner(hs);   // además: lee el dueño del GIS público y llena "Owner name" solo
+    ownerShowEmbed(url, '🏠 EPCAD — owner (El Paso, TX)');   // iframe = confirmación visual
   } else {
-    var url2 = 'https://assessor.donaanacounty.org/assessor/taxweb/results.jsp?AllTypes=on'
-        + '&SitusIDHouseNumber=' + encodeURIComponent(hs.house)
-        + '&SitusIDStreetName='  + encodeURIComponent(hs.street);
-    ownerShowLaunch(url2, 'Doña Ana Assessor', '🏠 County record — owner (Doña Ana, NM)',
-      'The Doña Ana assessor can\'t be shown inside this page (their site blocks it and now asks to sign in). It opens in a new tab with the address ready:<br><b>'+esc(hs.clean||addr)+'</b>');
+    ownerShowGis('🏠 County record — owner (Doña Ana, NM)');   // Doña Ana: ficha directa en la app
   }
+  fetchCountyOwner(hs);   // ambos: lee el dueño del GIS público y llena "Owner name" → mensaje
 }
-$('ownerPanelClose').addEventListener('click', function(){ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; $('ownerLaunch').style.display='none'; });
+$('ownerPanelClose').addEventListener('click', function(){ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; $('ownerLaunch').style.display='none'; $('ownerGis').style.display='none'; });
 
-/* Dueño automático desde el GIS público de El Paso (EPParcels) — sin Cloudflare, se lee del navegador.
-   Campo NAMEREAL = dueño; LOCADDRESS = dirección. Llena "Owner name" y de ahí pasa al mensaje. */
+/* ===== Dueño automático desde los GIS públicos del condado (sin Cloudflare, se leen del navegador) =====
+   El Paso: EPParcels (NAMEREAL/LOCADDRESS). Doña Ana: Parcels (OWNERNAME/SITUSADDRS). Ambos con CORS. */
+var GIS = {
+  epcad: { url:'https://gis.elpasotexas.gov/arcgis/rest/services/EPParcels/FeatureServer/0/query', owner:'NAMEREAL', addr:'LOCADDRESS', extra:[],               label:'El Paso county records' },
+  dona:  { url:'https://gis.donaana.gov/server/rest/services/Parcels/FeatureServer/0/query',       owner:'OWNERNAME', addr:'SITUSADDRS', extra:['CITY','ZIP'],  label:'Doña Ana county records' }
+};
 function titleCaseName(s){ return String(s||'').toLowerCase().replace(/\b([a-z])/g, function(m,c){ return c.toUpperCase(); }); }
-function epcadFetchOwner(hs){
+function donaAssessorUrl(hs){
+  return 'https://assessor.donaanacounty.org/assessor/taxweb/results.jsp?AllTypes=on'
+       + '&SitusIDHouseNumber=' + encodeURIComponent(hs.house)
+       + '&SitusIDStreetName='  + encodeURIComponent(hs.street);
+}
+function fetchCountyOwner(hs){
   if(!hs || !hs.house || !hs.street) return;
-  var note=$('ownerDetected');
-  if(note){ note.style.display=''; note.textContent='🔎 Looking up owner in El Paso county records…'; }
-  var where = "LOCADDRESS LIKE '" + (hs.house+' '+hs.street).toUpperCase().replace(/'/g,"''") + "%'";
-  var url = 'https://gis.elpasotexas.gov/arcgis/rest/services/EPParcels/FeatureServer/0/query'
-      + '?where=' + encodeURIComponent(where)
-      + '&outFields=NAMEREAL,LOCADDRESS&returnGeometry=false&f=json';
-  var token = (hs.house+' '+hs.street).toUpperCase();
-  window.__ownerReq = token;
+  var cfg = GIS[state.county]; if(!cfg) return;
+  var isDona = (state.county==='dona');
+  var note=$('ownerDetected'), gisBox=$('ownerGis');
+  if(note){ note.style.display=''; note.textContent='🔎 Looking up owner in '+cfg.label+'…'; }
+  if(isDona && gisBox){ gisBox.innerHTML='<div style="color:var(--muted);font-size:14px">🔎 Searching Doña Ana county records for <b>'+esc(hs.house+' '+hs.street)+'</b>…</div>'; }
+  var like = (hs.house+' '+hs.street).toUpperCase().replace(/'/g,"''");
+  var out  = [cfg.owner, cfg.addr].concat(cfg.extra||[]).join(',');
+  var url  = cfg.url + '?where=' + encodeURIComponent(cfg.addr+" LIKE '"+like+"%'")
+           + '&outFields=' + encodeURIComponent(out) + '&returnGeometry=false&f=json';
+  var token = state.county+'|'+like; window.__ownerReq = token;
   fetch(url).then(function(r){ return r.json(); }).then(function(j){
-    if(window.__ownerReq !== token) return;                  // llegó otra dirección → ignora
+    if(window.__ownerReq !== token) return;               // llegó otra dirección → ignora
     var feats = (j && j.features) || [];
-    if(!feats.length){ if(note){ note.style.display='none'; } return; }
-    var name = feats[0].attributes && feats[0].attributes.NAMEREAL;
-    if(!name){ if(note){ note.style.display='none'; } return; }
-    var pretty = titleCaseName(name);
-    $('owner').value = pretty; buildMsg();                    // llena Owner name → entra al mensaje
-    if(note){ note.style.display=''; note.textContent = '✓ Owner from El Paso records: ' + pretty + (feats.length>1 ? '  (+'+(feats.length-1)+' more matches)' : ''); }
-  }).catch(function(){ if(note){ note.style.display='none'; } });
+    if(!feats.length){
+      if(note){ note.style.display='none'; }
+      if(isDona && gisBox){ gisBox.innerHTML='<div style="color:var(--muted);font-size:14px;margin-bottom:10px">No match in Doña Ana records for <b>'+esc(hs.house+' '+hs.street)+'</b>.</div><a class="btn ghost sm" href="'+esc(donaAssessorUrl(hs))+'" target="_blank" rel="noopener">↗ Try the assessor site</a>'; }
+      return;
+    }
+    var a = feats[0].attributes || {};
+    var pretty = titleCaseName(a[cfg.owner] || '');
+    if(pretty){ $('owner').value = pretty; buildMsg(); }   // llena Owner name → entra al mensaje
+    if(note){ note.style.display=''; note.textContent='✓ Owner from '+cfg.label+': '+pretty+(feats.length>1?'  (+'+(feats.length-1)+' more)':''); }
+    if(isDona && gisBox){
+      var situs=a[cfg.addr]||'', city=a.CITY?titleCaseName(a.CITY):'', zip=a.ZIP||'';
+      var rows='<div style="font-size:17px;font-weight:800">'+esc(pretty)+'</div>';
+      if(situs) rows+='<div style="font-size:14px;margin-top:6px">🏠 '+esc(situs)+(city?', '+esc(city):'')+', NM '+esc(zip)+'</div>';
+      if(feats.length>1) rows+='<div style="font-size:12px;color:var(--muted);margin-top:6px">'+feats.length+' parcels match — showing the first; check the assessor for the exact one.</div>';
+      rows+='<a class="btn ghost sm" href="'+esc(donaAssessorUrl(hs))+'" target="_blank" rel="noopener" style="margin-top:12px;display:inline-block">↗ Open assessor (full tax record)</a>';
+      gisBox.innerHTML=rows;
+    }
+  }).catch(function(){
+    if(window.__ownerReq !== token) return;
+    if(note){ note.style.display='none'; }
+    if(isDona && gisBox){ gisBox.innerHTML='<div style="color:#b91c1c;font-size:13px;margin-bottom:10px">Couldn\'t reach Doña Ana GIS.</div><a class="btn ghost sm" href="'+esc(donaAssessorUrl(hs))+'" target="_blank" rel="noopener">↗ Open assessor site</a>'; }
+  });
 }
 $('ownerBtn').addEventListener('click', searchOwner);
 $('owner').addEventListener('input', buildMsg);
