@@ -166,7 +166,8 @@
           <span class="hintline" id="trStatus" style="margin:0;flex:1;min-width:160px">Comparte el audio de <b>esta pestaña</b>. Al oír una dirección te la sugiere.</span>
         </div>
         <div id="trSuggest" style="display:none;margin-bottom:8px"></div>
-        <div id="trHUD" style="min-height:64px;max-height:170px;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:12px;font-size:14px;line-height:1.5"></div>
+        <div id="trHUD" style="height:240px;min-height:120px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:14px;font-size:15px;line-height:1.6"></div>
+        <div class="hintline" style="margin-top:4px">Puedes <b>subir/bajar</b> para revisar la conversación, y jalar la esquina ↘ para hacerlo más grande.</div>
       </div>
 
       <!-- Condado -->
@@ -909,11 +910,13 @@ async function trFlush(){
 function trMerge(arrs){ var n=0,i; for(i=0;i<arrs.length;i++) n+=arrs[i].length; var o=new Float32Array(n),k=0; for(i=0;i<arrs.length;i++){ o.set(arrs[i],k); k+=arrs[i].length; } return o; }
 
 function trAppend(text){
-  var full = (($('trHUD').dataset.full||'') + ' ' + text).replace(/\s+/g,' ').trim();
-  $('trHUD').dataset.full = full.slice(-2000);
-  $('trHUD').textContent = $('trHUD').dataset.full;
-  $('trHUD').scrollTop = $('trHUD').scrollHeight;
-  trDetectAddress($('trHUD').dataset.full);
+  var el = $('trHUD');
+  var atBottom = (el.scrollHeight - el.scrollTop - el.clientHeight) < 40;   // ¿está pegado abajo?
+  var full = ((el.dataset.full||'') + ' ' + text).replace(/\s+/g,' ').trim();
+  el.dataset.full = full.slice(-8000);                                       // guarda más conversación
+  el.textContent = el.dataset.full;
+  if(atBottom) el.scrollTop = el.scrollHeight;                               // solo auto-baja si ya estabas abajo
+  trDetectAddress(el.dataset.full);
 }
 
 var TR_ADDR_RE=/\b(\d{2,6})\s+([A-Za-z0-9.'’-]+(?:\s+[A-Za-z0-9.'’-]+){0,3})\s+(street|st|avenue|ave|drive|dr|road|rd|boulevard|blvd|lane|ln|circle|cir|court|ct|place|pl|way|highway|hwy|parkway|pkwy|calle|avenida|camino)\b/i;
