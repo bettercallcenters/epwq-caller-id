@@ -250,7 +250,11 @@
       <!-- Owner name -->
       <div class="field">
         <label>Owner name (as shown in the search)</label>
-        <input type="text" id="owner" placeholder="Ivan y Laura Cifuentes" autocomplete="off" />
+        <div class="row" style="align-items:stretch">
+          <input type="text" id="owner" placeholder="Ivan y Laura Cifuentes" autocomplete="off" />
+          <button class="btn ghost" id="copyOwner" style="flex:0 0 auto">📋 Copy</button>
+        </div>
+        <div id="ownerCopied" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:var(--ok);background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px">✓ Owner name copied</div>
       </div>
     </div>
   </div>
@@ -623,6 +627,18 @@ function searchOwner(){
 $('ownerPanelClose').addEventListener('click', function(){ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; });
 $('ownerBtn').addEventListener('click', searchOwner);
 $('owner').addEventListener('input', buildMsg);
+
+// Copiar el nombre del dueño con confirmación verde
+var ownerCopiedTimer=null;
+$('copyOwner').addEventListener('click', function(){
+  var v = $('owner').value.trim();
+  if(!v){ toast('No owner name to copy'); $('owner').focus(); return; }
+  copy(v).then(function(){
+    var c=$('ownerCopied'); c.style.display='';
+    clearTimeout(ownerCopiedTimer);
+    ownerCopiedTimer=setTimeout(function(){ c.style.display='none'; }, 2500);
+  });
+});
 
 /* ============================================================
    CHIPS: cuándo / idioma / rol
