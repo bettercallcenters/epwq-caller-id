@@ -914,7 +914,11 @@ $('smsMsg').addEventListener('click', function(){
 function rcControl(action){
   var frame = document.querySelector('#rc-widget-adapter-frame');
   if(!frame || !frame.contentWindow){ toast('Sign in to the RingCentral softphone first'); return; }
-  frame.contentWindow.postMessage({ type:'rc-adapter-control-call', callAction:action, callId: window.__rcCallId || undefined }, '*');
+  // NO mandamos callId: al omitirlo, RingCentral actúa sobre la llamada que está sonando/activa
+  // (mandar un callId equivocado hacía que NO contestara). Ver docs: omit callId = current ringing call.
+  var msg = { type:'rc-adapter-control-call', callAction:action };
+  try{ console.log('rcControl →', action, msg); }catch(_){}
+  frame.contentWindow.postMessage(msg, '*');
 }
 if($('answerBtn')) $('answerBtn').addEventListener('click', function(){ rcControl('answer'); toast('📞 Answering…'); });
 if($('rejectBtn')) $('rejectBtn').addEventListener('click', function(){ rcControl('reject'); });
