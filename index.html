@@ -262,6 +262,16 @@
   <!-- ================= COLUMNA DERECHA: SOFTPHONE + CITA + MENSAJE ================= -->
   <div style="display:flex;flex-direction:column;gap:16px">
 
+    <!-- HUD de equipo: quién está en llamada -->
+    <div class="card">
+      <h2>👥 Team status</h2>
+      <div class="body" style="padding:12px 14px">
+        <div id="teamList" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--muted);font-size:13px">Connecting…</span></div>
+        <div id="teamAlert" style="display:none;margin-top:10px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 12px;font-weight:800;font-size:15px">🚨 TODOS EN LLAMADA — favor de contestar</div>
+        <div class="hintline" style="margin-top:8px">Each agent's app reports its own status. Shows only agents with the app open. Voice + alert fire when everyone online is on a call.</div>
+      </div>
+    </div>
+
     <!-- Softphone de RingCentral EMBEBIDO y grande -->
     <div class="card">
       <h2>📞 RingCentral softphone</h2>
@@ -995,6 +1005,7 @@ function endCall(id){
   window.__lastFrom = null;
   callEnded();
   stopTranscriptOnCallEnd();
+  reportStatus('available');
 }
 
 window.addEventListener('message', function(e){
@@ -1024,12 +1035,92 @@ window.addEventListener('message', function(e){
     };
     if(from.phoneNumber || from.extensionNumber || from.name) window.__lastFrom = from;
     onIncoming(from.phoneNumber || from.extensionNumber || '', st === 'answered', from);
+    reportStatus(st === 'answered' ? 'oncall' : 'ringing');   // HUD de equipo
     if(st === 'answered'){ callIsActive = true; if(dgArmed) dgConnect(); }   // AUTO-transcript si está armado
   }
 
   // Llamada terminada / colgada / rechazada
   if(d.type === 'rc-call-end-notify'){ endCall(rcCallId(rcCallOf(d))); }
 });
+
+/* ===== HUD de equipo: cada app reporta SU estado a Supabase; todas leen el tablero =====
+   La anon key es pública por diseño (protegida por RLS: solo lee/escribe la tabla agent_status). */
+var TEAM_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/rest/v1/agent_status';
+var TEAM_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjbWJia2FrcXFkZ3RldGp2aHh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjA2NzUsImV4cCI6MjA5NzE5NjY3NX0.EF9Pv6XMCp6KSObcrzr4Y6zRHwzjihsqpKCXeT8Z3LM';
+var TEAM_STALE_MS = 45000;   // sin reportar > 45s → se considera offline (app cerrada)
+var myStatus = 'available', teamAlerted = false, teamVoiceUnlocked = false;
+
+function reportStatus(st){
+  if(st) myStatus = st;
+  var agent = (typeof agentLabel === 'function' ? agentLabel() : '') || '';
+  if(!agent || agent === 'Agente') return;   // sin nombre → no reporta (no ensucia el tablero)
+  try{
+    fetch(TEAM_URL, {
+      method:'POST',
+      headers:{ 'apikey':TEAM_KEY, 'Authorization':'Bearer '+TEAM_KEY, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates' },
+      body: JSON.stringify([{ agent:agent, status:myStatus, updated_at:new Date().toISOString() }])
+    }).catch(function(){});
+  }catch(_){}
+}
+
+function teamAllBusyAlert(){
+  var b = $('teamAlert');
+  if(b){ b.style.display='block'; setTimeout(function(){ if(b) b.style.display='none'; }, 9000); }
+  try{ toast('🚨 Todos en llamada — favor de contestar'); }catch(_){}
+  try{
+    if(window.speechSynthesis){
+      var u = new SpeechSynthesisUtterance('Todos están en llamada. Favor de contestar.');
+      u.lang='es-MX'; u.rate=1;
+      window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
+    }
+  }catch(_){}
+}
+
+function renderTeam(rows){
+  var box = $('teamList'); if(!box) return;
+  var now = Date.now();
+  var online = (rows||[]).filter(function(a){
+    var t = a.updated_at ? new Date(a.updated_at).getTime() : 0;
+    return (now - t) < TEAM_STALE_MS;
+  });
+  if(!online.length){
+    box.innerHTML = '<span style="color:var(--muted);font-size:13px">No agents online yet — open the app on each agent\'s computer.</span>';
+    teamAlerted = false; return;
+  }
+  var me = (typeof agentLabel === 'function' ? agentLabel() : '');
+  box.innerHTML = online.sort(function(a,b){ return (a.agent||'').localeCompare(b.agent||''); }).map(function(a){
+    var oncall = a.status==='oncall', ring = a.status==='ringing';
+    var dot = oncall ? '🔴' : (ring ? '🟡' : '🟢');
+    var lbl = oncall ? 'On call' : (ring ? 'Ringing' : 'Available');
+    var mine = (a.agent===me) ? ';outline:2px solid var(--accent,#2563eb);outline-offset:1px' : '';
+    return '<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px'+mine+'">'+dot+' <b>'+esc(a.agent||'?')+'</b> · '+lbl+'</span>';
+  }).join('');
+  // Alerta: 2+ agentes online y TODOS en llamada
+  var busy = online.filter(function(a){ return a.status==='oncall'; }).length;
+  var allBusy = online.length>=2 && busy===online.length;
+  if(allBusy && !teamAlerted){ teamAlerted = true; teamAllBusyAlert(); }
+  if(!allBusy) teamAlerted = false;
+}
+
+function pollTeam(){
+  try{
+    fetch(TEAM_URL+'?select=agent,status,updated_at', { headers:{ 'apikey':TEAM_KEY, 'Authorization':'Bearer '+TEAM_KEY } })
+      .then(function(r){ return r.json(); })
+      .then(function(rows){ renderTeam(rows); })
+      .catch(function(){});
+  }catch(_){}
+}
+
+// Desbloquea la voz del navegador en el primer gesto del usuario (política de autoplay)
+document.addEventListener('click', function(){
+  if(teamVoiceUnlocked || !window.speechSynthesis) return;
+  try{ var u=new SpeechSynthesisUtterance(''); u.volume=0; window.speechSynthesis.speak(u); teamVoiceUnlocked=true; }catch(_){}
+}, { once:false });
+
+reportStatus('available');                 // reporta al abrir
+setInterval(function(){ reportStatus(); }, 20000);  // heartbeat: sigue "vivo"
+pollTeam(); setInterval(pollTeam, 5000);    // lee el tablero cada 5s
+if($('agentName')){ $('agentName').addEventListener('change', function(){ reportStatus(); }); }
 
 /* Ciudad aproximada por código de área (gratis, instantáneo). El área ≠ dónde vive, pero da contexto. */
 var AREACODE = {
