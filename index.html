@@ -773,6 +773,24 @@ $('testAlert').addEventListener('click', function(){
   setTimeout(callEnded, 5000);
 });
 
+// Extrae número/nombre probando TODAS las formas en que RingCentral los manda (varía por versión/evento)
+function extractCallFrom(c){
+  if(!c) return {};
+  var f = c.from;
+  var fObj = (f && typeof f==='object') ? f : {};
+  var phoneNumber =
+    fObj.phoneNumber || c.fromNumber || c.phoneNumber ||
+    (typeof f==='string' ? f : '') || '';
+  var extensionNumber = fObj.extensionNumber || c.fromExtension || '';
+  var matches = c.fromMatches || fObj.fromMatches || [];
+  var name =
+    c.fromName || fObj.name ||
+    (matches[0] && matches[0].name) || '';
+  return { phoneNumber:phoneNumber, extensionNumber:extensionNumber, name:name, direction:c.direction||'' };
+}
+
+var RC_CALL_EVENTS = ['rc-call-ring-notify','rc-call-start-notify','rc-active-call-notify','rc-telephony-session-notify'];
+
 window.addEventListener('message', function(e){
   var d = e.data; if(!d || !d.type) return;
 
@@ -781,24 +799,27 @@ window.addEventListener('message', function(e){
     $('rcStatus').textContent = d.loggedIn ? 'RingCentral: conectado ✔' : 'RingCentral: conecta el softphone ↘';
   }
 
-  // Llamada entrante o contestada — captura y PRESERVA número/nombre del que llama
-  if(d.type === 'rc-call-ring-notify' || d.type === 'rc-call-start-notify'){
-    var call = d.call || {};
-    try{ console.log('RC event', d.type, call); }catch(_){}
-    var answered = (d.type === 'rc-call-start-notify');
-    if(answered && call.direction && call.direction !== 'Inbound'){
-      /* llamada saliente: no la tratamos como entrante */
-    } else {
-      var f = call.from || {};
-      var prev = window.__lastFrom || {};
-      var from = {
-        phoneNumber:     f.phoneNumber     || prev.phoneNumber     || '',
-        extensionNumber: f.extensionNumber || prev.extensionNumber || '',
-        name:            f.name            || prev.name            || ''
-      };
-      window.__lastFrom = from;    // guarda por si el siguiente evento viene sin número
-      onIncoming(from.phoneNumber || from.extensionNumber || '', answered, from);
+  // Llamada entrante / contestada / actualizada — escucha varios eventos por si uno no trae los datos
+  if(RC_CALL_EVENTS.indexOf(d.type) >= 0){
+    try{ console.log('RC event', d.type, d); }catch(_){}
+    var call = d.call;
+    if(!call && d.calls && d.calls.length){
+      call = d.calls.filter(function(c){ return c.direction!=='Outbound'; })[0] || d.calls[0];
     }
+    if(!call) return;
+    if(call.direction && call.direction !== 'Inbound') return;   // ignora llamadas salientes
+
+    var answered = (d.type==='rc-call-start-notify') ||
+                    /connect/i.test(call.telephonyStatus||'') || /answer/i.test(call.telephonyStatus||'');
+    var ex = extractCallFrom(call);
+    var prev = window.__lastFrom || {};
+    var from = {
+      phoneNumber:     ex.phoneNumber     || prev.phoneNumber     || '',
+      extensionNumber: ex.extensionNumber || prev.extensionNumber || '',
+      name:            ex.name            || prev.name            || ''
+    };
+    if(from.phoneNumber || from.extensionNumber || from.name) window.__lastFrom = from;
+    onIncoming(from.phoneNumber || from.extensionNumber || '', answered, from);
   }
 
   // Llamada terminada / colgada / rechazada → callar la alerta
