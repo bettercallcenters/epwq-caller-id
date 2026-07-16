@@ -341,7 +341,7 @@
           <label>Day</label>
           <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
             <span class="chip" data-day="0">Today</span>
-            <span class="chip on" data-day="1">Tomorrow</span>
+            <span class="chip" data-day="1">Tomorrow</span>
             <input type="date" id="apptDate" style="flex:1;min-width:130px" />
           </div>
         </div>
@@ -361,7 +361,7 @@
           <label>Language · Role · Hot lead</label>
           <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
             <span class="chips" id="langChips" style="display:contents">
-              <span class="chip on" data-lang="Spanish">Spanish</span>
+              <span class="chip" data-lang="Spanish">Spanish</span>
               <span class="chip" data-lang="English">English</span>
               <span class="chip" data-lang="Bilingual">Bilingual</span>
             </span>
@@ -417,7 +417,7 @@
 ============================================================ */
 var state = {
   county: 'epcad',           // 'epcad' (El Paso TX) | 'dona' (Doña Ana NM)
-  lang: 'Spanish',
+  lang: '',              // sin idioma por defecto — el agente lo elige
   role: 'owner',
   hotLead: false,
   addrCompact: '',           // "5513 Edinburg" para el mensaje
@@ -480,7 +480,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r38-2026-07-16';
+var APP_VERSION = 'r39-2026-07-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -894,7 +894,7 @@ function buildMsg(){
   var addr  = (state.addrCompact || $('addr').value || '').trim();
   var when  = computeWhen();
   var phone = digits($('phone').value);
-  var line4 = state.lang + '/ ' + state.role;
+  var line4 = (state.lang ? state.lang + '/ ' : '') + state.role;   // idioma solo si el agente lo eligió
   var notes = ($('notes') ? $('notes').value : '').trim();
   var parts = [];
   if(state.hotLead) parts.push('🔥 HOT LEAD');   // arriba para que resalte
@@ -1483,11 +1483,11 @@ function resetForNewCall(){
   var hud=$('trHUD'); if(hud){ hud.innerHTML=''; hud.dataset.full=''; hud.dataset.last=''; }
   if(typeof dgClientBuf!=='undefined') dgClientBuf='';
   if(typeof trLastAddr!=='undefined') trLastAddr='';
-  // Cita → valores por defecto (condado El Paso, Mañana, 4-6 Pm rango, Spanish, owner, sin hot lead)
+  // Cita → valores por defecto (día e idioma EN BLANCO — el agente los elige; solo 4-6 Pm rango, owner)
   try{ setCounty('epcad'); }catch(e){}
-  setDayOffset(1);
+  $('apptDate').value=''; updateDayChips();                          // día en blanco
   applyTimeMode('range'); $('timeFrom').value='16'; $('timeTo').value='18';
-  state.lang='Spanish'; activateChip('langChips','lang','Spanish');
+  state.lang=''; activateChip('langChips','lang','');               // idioma en blanco (ningún chip 'on')
   state.role='owner';   activateChip('roleChips','role','owner');
   state.hotLead=false;
   var hl=$('hotLead'); if(hl){ hl.classList.remove('on'); hl.textContent='🔥 Mark as HOT LEAD'; }
@@ -1938,16 +1938,14 @@ function fmtRange(from,to){
                              : (h12(from)+' '+mer(from)+'-'+h12(to)+' '+mer(to));
 }
 function computeWhen(){
-  var val=$('apptDate').value, day='Today';
-  if(val){
-    var today=ymd(new Date()), tom=ymd(dateOff(1));
-    if(val===today){ day='Today'; }
-    else {
-      var d=new Date(val+'T00:00:00');
-      var wd=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
-      // Mañana → solo el día (ej. "Friday"). De pasado en adelante → fecha exacta + día (ej. "7/21 Tuesday")
-      day = (val===tom) ? wd : ((d.getMonth()+1)+'/'+d.getDate()+' '+wd);
-    }
+  var val=$('apptDate').value;
+  if(!val) return '';   // sin día elegido → no pone nada en el mensaje (el agente elige el día)
+  var day, today=ymd(new Date()), tom=ymd(dateOff(1));
+  if(val===today){ day='Today'; }
+  else {
+    var d=new Date(val+'T00:00:00');
+    var wd=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+    day = (val===tom) ? wd : ((d.getMonth()+1)+'/'+d.getDate()+' '+wd);
   }
   var from=parseInt($('timeFrom').value,10), to=parseInt($('timeTo').value,10);
   var time = (timeMode==='exact') ? (h12(from)+' '+mer(from)) : fmtRange(from,to);
@@ -1978,7 +1976,7 @@ $('timeMode').addEventListener('click', function(e){
   buildMsg();
 });
 
-$('apptDate').value = ymd(dateOff(1));   // default: MAÑANA (cita típica al día siguiente)
+$('apptDate').value = '';   // sin día por defecto — el agente lo elige (Today/Tomorrow/calendario)
 fillTimes(); updateDayChips();
 $('apptDate').addEventListener('change', function(){ updateDayChips(); buildMsg(); });
 $('timeFrom').addEventListener('change', buildMsg);
