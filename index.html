@@ -478,7 +478,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r34-2026-07-15';
+var APP_VERSION = 'r35-2026-07-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -771,6 +771,8 @@ function searchOwner(){
     ownerShowGis('🏠 County record — owner (Doña Ana, NM)');   // Doña Ana: ficha directa en la app
   }
   fetchCountyOwner(hs);   // ambos: lee el dueño del GIS público y llena "Owner name" → mensaje
+  // Al mismo tiempo: USPhonebook de quien llama → sale como 2º recuadro (solo si el bot está configurado; si no, es Cloudflare y no se puede leer)
+  try{ if(callerLookupUrl() && digits($('phone').value||'').length===10){ lookupCaller($('phone').value); } }catch(e){}
 }
 $('ownerPanelClose').addEventListener('click', function(){ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; $('ownerLaunch').style.display='none'; $('ownerGis').style.display='none'; });
 
