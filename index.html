@@ -225,10 +225,13 @@
         </div>
       </div>
 
-      <!-- Phone: already shown in the call banner above; kept hidden so the rest of the app keeps working -->
-      <div class="field" style="display:none">
-        <input type="text" id="phone" placeholder="(832) 865-8324" inputmode="tel" autocomplete="off" />
-        <button class="btn ghost" id="uspBtn" style="flex:0 0 auto">🔎 USPhonebook</button>
+      <!-- Phone number — auto-filled from the call, but editable -->
+      <div class="field">
+        <label>Phone number (editable)</label>
+        <div class="row" style="align-items:stretch">
+          <input type="text" id="phone" placeholder="(832) 865-8324" inputmode="tel" autocomplete="off" />
+          <button class="btn ghost" id="uspBtn" style="flex:0 0 auto">🔎 USPhonebook</button>
+        </div>
       </div>
 
       <!-- Address with autocomplete -->
@@ -480,12 +483,12 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r41-2026-07-16';
+var APP_VERSION = 'r42-2026-07-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
   d.style.cssText='position:fixed;left:50%;top:10px;transform:translateX(-50%);z-index:99999;background:#1e40af;color:#fff;padding:10px 16px;border-radius:10px;box-shadow:0 6px 20px rgba(0,0,0,.28);font-size:14px;font-weight:800;cursor:pointer;display:flex;gap:8px;align-items:center';
-  d.textContent='🔄 Nueva versión disponible — clic para actualizar';
+  d.textContent='🔄 New version available — click to update';
   d.onclick=function(){ location.replace(location.pathname + '?v=' + Date.now()); };
   document.body.appendChild(d);
 }
@@ -602,12 +605,12 @@ function renderCaller(data, num){
     var imgStyle = 'width:100%;max-height:260px;object-fit:cover;object-position:top;border:1px solid var(--line);border-radius:8px';
     var img = data.screenshot ? '<img src="data:image/jpeg;base64,'+data.screenshot+'" alt="USPhonebook result" style="'+imgStyle+'">' : '';
     // Sin nombre/dirección legibles = probablemente la página de "verify you are human" de Cloudflare
-    var note = (!nm && !data.aka && !data.address && !ph) ? '<div style="color:#b45309;font-size:13px;margin-bottom:8px">USPhonebook pidió verificación (no dejó leer los datos). Usa ↗ Open para verlo en pestaña.</div>' : '';
+    var note = (!nm && !data.aka && !data.address && !ph) ? '<div style="color:#b45309;font-size:13px;margin-bottom:8px">USPhonebook asked for a check (couldn\'t read the data). Use ↗ Open to see it in a tab.</div>' : '';
     body.innerHTML = (note+fields+img) || '<div style="color:var(--muted);font-size:13px">Found, but no details could be read.</div>';
   } else if(data && data.reason==='blocked'){
     st.textContent='human check';
-    body.innerHTML='<div style="color:#b45309;font-size:13px;margin-bottom:8px">USPhonebook pidió verificación humana. <b>Verifícalo tú mismo</b> aquí (página real en vivo, IP de EE.UU.):</div>'
-      + '<button class="btn primary sm" id="solveBtn">🖱️ Verificar yo mismo</button>';
+    body.innerHTML='<div style="color:#b45309;font-size:13px;margin-bottom:8px">USPhonebook asked for a human check. <b>Verify it yourself</b> here (real page, live, US IP):</div>'
+      + '<button class="btn primary sm" id="solveBtn">🖱️ Verify it myself</button>';
     var sb=$('solveBtn'); if(sb) sb.onclick=function(){ startSolve(num); };
   } else {
     st.textContent='not found';
@@ -624,20 +627,20 @@ function startSolve(num){
   if(!base || d.length!==10) return;
   endSolve();
   $('callerInfo').style.display='';
-  st.textContent='abriendo…';
-  body.innerHTML='<div style="color:var(--muted);font-size:13px;padding:6px 0">🖥️ Abriendo la página en vivo (EE.UU.)… espera unos segundos.</div>';
+  st.textContent='opening…';
+  body.innerHTML='<div style="color:var(--muted);font-size:13px;padding:6px 0">🖥️ Opening the live page (US)… a few seconds.</div>';
   fetch(base+'/solve/start?phone='+d).then(function(r){return r.json();}).then(function(j){
-    if(!j || !j.ok){ st.textContent='error'; body.innerHTML='<div style="color:#b91c1c;font-size:13px">No se pudo abrir. Intenta de nuevo.</div>'; return; }
+    if(!j || !j.ok){ st.textContent='error'; body.innerHTML='<div style="color:#b91c1c;font-size:13px">Couldn\'t open. Try again.</div>'; return; }
     solveRun(base, j.sid, j.w||1000, j.h||760, num);
-  }).catch(function(){ st.textContent='error'; body.innerHTML='<div style="color:#b91c1c;font-size:13px">Error de conexión con el bot.</div>'; });
+  }).catch(function(){ st.textContent='error'; body.innerHTML='<div style="color:#b91c1c;font-size:13px">Connection error with the bot.</div>'; });
 }
 function solveRun(base, sid, w, h, num){
   var body=$('callerInfoBody'), st=$('callerInfoStatus');
-  st.textContent='verifica 👆';
+  st.textContent='verify 👆';
   body.innerHTML=
-    '<div style="color:#166534;font-size:13px;font-weight:700;margin-bottom:6px">👆 Haz clic en el checkbox "Verify you are human" (es la página REAL, en vivo)</div>'
+    '<div style="color:#166534;font-size:13px;font-weight:700;margin-bottom:6px">👆 Click the "Verify you are human" checkbox (this is the REAL page, live)</div>'
     +'<img id="solveImg" alt="live" style="width:100%;border:1px solid var(--line);border-radius:8px;cursor:pointer;display:block;background:#f8fafc" />'
-    +'<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn ghost sm" id="solveCancel">✕ Cancelar</button><span id="solveMsg" style="font-size:12px;color:var(--muted)">esperando tu clic…</span></div>';
+    +'<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn ghost sm" id="solveCancel">✕ Cancel</button><span id="solveMsg" style="font-size:12px;color:var(--muted)">waiting for your click…</span></div>';
   var img=$('solveImg');
   var st2={ stopped:false, poll:null };
   // frames en secuencia (cada uno espera al anterior → sin encimar peticiones = menos lag)
@@ -647,7 +650,7 @@ function solveRun(base, sid, w, h, num){
   if(img) img.onclick=function(e){
     var r=img.getBoundingClientRect();
     var x=Math.round((e.clientX-r.left)/r.width*w), y=Math.round((e.clientY-r.top)/r.height*h);
-    var m=$('solveMsg'); if(m) m.textContent='clic enviado… verificando ⏳';
+    var m=$('solveMsg'); if(m) m.textContent='click sent… verifying ⏳';
     fetch(base+'/solve/click?sid='+encodeURIComponent(sid)+'&x='+x+'&y='+y).catch(function(){});
   };
   var tries=0;
@@ -655,8 +658,8 @@ function solveRun(base, sid, w, h, num){
     tries++;
     if(tries>22){   // ~33s en "Verifying" = Cloudflare detectó el navegador automático → no va a pasar gratis
       endSolve();
-      st.textContent='no pasó';
-      body.innerHTML='<div style="color:#b45309;font-size:13px;line-height:1.5">Cloudflare no aceptó la verificación (detecta que es un navegador automático del servidor, no importa el clic). Este reto <b>no se puede pasar gratis</b>. Para USPhonebook confiable se necesita <b>CapSolver (~$6/mes)</b>.<br><br>Mientras, el <b>dueño + dirección</b> ya salen gratis con la dirección de la casa. 👍</div>';
+      st.textContent='not passed';
+      body.innerHTML='<div style="color:#b45309;font-size:13px;line-height:1.5">Cloudflare didn\'t accept the check (it detects the server\'s automated browser — the click doesn\'t matter). This challenge <b>can\'t be passed for free</b>. Reliable USPhonebook needs <b>CapSolver (~$6/mo)</b>.<br><br>Meanwhile, the <b>owner + address</b> come free from the house address. 👍</div>';
       return;
     }
     fetch(base+'/solve/result?sid='+encodeURIComponent(sid)).then(function(r){return r.json();}).then(function(j){
@@ -664,7 +667,7 @@ function solveRun(base, sid, w, h, num){
     }).catch(function(){});
   }, 1500);
   solveState=st2;
-  var c=$('solveCancel'); if(c) c.onclick=function(){ endSolve(); st.textContent=''; body.innerHTML='<div style="color:var(--muted);font-size:13px">Cancelado.</div>'; };
+  var c=$('solveCancel'); if(c) c.onclick=function(){ endSolve(); st.textContent=''; body.innerHTML='<div style="color:var(--muted);font-size:13px">Cancelled.</div>'; };
 }
 updateLookupLabel();
 $('phone').addEventListener('input', buildMsg);
