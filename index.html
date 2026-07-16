@@ -307,7 +307,7 @@
             <input type="text" id="agentName" placeholder="Hector" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px" />
             <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Clear</button>
           </div>
-          <div class="hintline" id="trStatus" style="margin:0 0 8px"><b>Arm once</b> (allow mic + share this tab's audio) → it auto-transcribes every call, separating Agent/Client.</div>
+          <div class="hintline" id="trStatus" style="margin:0 0 8px">Arms itself the <b>first time you answer a call</b> (Chrome asks to share this tab once). After that, <b>every call transcribes automatically</b> — no button per call.</div>
           <div id="dgMeters" style="display:none;gap:14px;margin:0 0 8px;font-size:12px;color:var(--muted)">
             <div style="flex:1">🎤 You (mic)<div class="meterTrack"><div id="meterMic" class="meterFill"></div></div></div>
             <div style="flex:1">📞 Call (client)<div class="meterTrack"><div id="meterCall" class="meterFill"></div></div></div>
@@ -477,7 +477,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r32-2026-07-15';
+var APP_VERSION = 'r33-2026-07-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -944,7 +944,12 @@ function rcControl(action){
   try{ console.log('rcControl →', action, msg); }catch(_){}
   frame.contentWindow.postMessage(msg, '*');
 }
-if($('answerBtn')) $('answerBtn').addEventListener('click', function(){ rcControl('answer'); toast('📞 Answering…'); });
+if($('answerBtn')) $('answerBtn').addEventListener('click', function(){
+  rcControl('answer'); toast('📞 Answering…');
+  // Auto-arma el transcript en la PRIMERA llamada que contestes (el clic de "Answer" es el permiso que exige Chrome).
+  // Así no aprietas un botón aparte: contestas y, la 1ª vez, permites compartir la pestaña; de ahí es automático.
+  try{ if(typeof DEEPGRAM_KEY_URL!=='undefined' && DEEPGRAM_KEY_URL && typeof dgArmed!=='undefined' && !dgArmed){ dgArm(); } }catch(e){}
+});
 if($('rejectBtn')) $('rejectBtn').addEventListener('click', function(){ rcControl('reject'); });
 if($('hangupBtn')) $('hangupBtn').addEventListener('click', function(){ rcControl('hangup'); });
 
