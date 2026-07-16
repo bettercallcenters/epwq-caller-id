@@ -47,6 +47,7 @@
   #incoming.live{background:linear-gradient(90deg,#dcfce7,#f0fdf4);border:1px solid #86efac;color:#065f46;
         animation:pulse 1.2s ease-in-out infinite}
   @keyframes pulse{0%,100%{box-shadow:0 0 0 0 rgba(22,163,74,.35)}50%{box-shadow:0 0 0 8px rgba(22,163,74,0)}}
+  @keyframes answerPulse{0%,100%{box-shadow:0 0 0 0 rgba(22,163,74,.55)}50%{box-shadow:0 0 0 12px rgba(22,163,74,0)}}
   #incoming .ic{font-size:22px}
   #incoming .num{font-size:20px;font-weight:800;letter-spacing:.5px}
   #incoming .lbl{font-size:12px;text-transform:uppercase;letter-spacing:.6px;opacity:.8}
@@ -185,7 +186,7 @@
           <div id="incMeta" style="font-size:13px;opacity:.92;margin-top:3px"></div>
         </div>
         <div class="sp" id="incActions" style="display:none;gap:6px;flex-wrap:wrap">
-          <button class="btn sm" id="answerBtn" style="background:#16a34a;color:#fff;border-color:#16a34a;font-weight:700">📞 Answer</button>
+          <button class="btn" id="answerBtn" style="background:#16a34a;color:#fff;border-color:#16a34a;font-weight:800;padding:10px 22px;font-size:15px;animation:answerPulse 1.2s ease-in-out infinite">📞 Answer</button>
           <button class="btn ghost sm" id="rejectBtn">✕ Reject</button>
           <button class="btn ghost sm" id="muteCallBtn" style="display:none">🎤 Mute</button>
           <button class="btn ghost sm" id="hangupBtn" style="display:none">📵 Hang up</button>
@@ -476,7 +477,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r31-2026-07-15';
+var APP_VERSION = 'r32-2026-07-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
