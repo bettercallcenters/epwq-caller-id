@@ -301,7 +301,8 @@
       <div class="body">
         <div id="trBlock">
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-            <button class="btn primary sm" id="trBtn">🎧 Arm auto-transcript</button>
+            <span class="badge" style="background:#dcfce7;color:#166534;font-weight:700">🎧 Auto — starts when you answer</span>
+            <button class="btn ghost sm" id="trBtn" style="font-size:12px;opacity:.7">start manually</button>
             <span class="badge" style="background:#fef3c7;color:#b45309">beta</span>
             <label style="font-size:12px;color:var(--muted);white-space:nowrap">Your name:</label>
             <input type="text" id="agentName" placeholder="Hector" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px" />
@@ -477,7 +478,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r33-2026-07-15';
+var APP_VERSION = 'r34-2026-07-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1813,7 +1814,7 @@ async function dgArm(){
 
     dgArmed=true;
     startMeters();
-    $('trBtn').textContent='⏹ Turn off auto-transcript'; $('trBtn').disabled=false;
+    $('trBtn').textContent='⏹ stop transcript'; $('trBtn').disabled=false;
     trSetStatus('✅ Armed — transcribes automatically on each call. 🎤 speak: the bar moves.');
     if(callIsActive) dgConnect();   // si ya hay una llamada, arranca de una vez
   }catch(err){
@@ -1872,8 +1873,8 @@ function dgDisarm(){
   try{ if(dgMicStream) dgMicStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
   try{ if(dgTabStream) dgTabStream.getTracks().forEach(function(t){ t.stop(); }); }catch(e){}
   dgWS=dgProc=dgCtx=dgMicStream=dgTabStream=null;
-  $('trBtn').textContent='🎧 Arm auto-transcript'; $('trBtn').disabled=false;
-  trSetStatus('Off. Click once to arm — then it auto-transcribes every call.');
+  $('trBtn').textContent='start manually'; $('trBtn').disabled=false;
+  trSetStatus('Off — it starts automatically when you answer a call (allow the tab share once).');
 }
 
 // Medidor de micrófono / llamada (para ver que sí capta el audio)
