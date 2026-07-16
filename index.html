@@ -480,7 +480,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r39-2026-07-16';
+var APP_VERSION = 'r40-2026-07-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -563,10 +563,11 @@ if($('lookupCfg')) $('lookupCfg').addEventListener('click', function(){
   updateLookupLabel();
   toast(callerLookupUrl()?'Caller lookup enabled':'Caller lookup off');
 });
-if($('callerInfoClose')) $('callerInfoClose').addEventListener('click', function(){ $('callerInfo').style.display='none'; });
+if($('callerInfoClose')) $('callerInfoClose').addEventListener('click', function(){ try{ endSolve(); }catch(e){} $('callerInfo').style.display='none'; });
 
 var lastLookedUp='';
 function lookupCaller(num){
+  try{ endSolve(); }catch(e){}   // cancela cualquier verificación en vivo previa
   var base=callerLookupUrl(), d=digits(num);
   if(!base){ toast('Set the Caller lookup URL first (🪪 button)'); return; }
   if(d.length!==10){ toast('No valid number to look up'); return; }
@@ -605,12 +606,58 @@ function renderCaller(data, num){
     body.innerHTML = (note+fields+img) || '<div style="color:var(--muted);font-size:13px">Found, but no details could be read.</div>';
   } else if(data && data.reason==='blocked'){
     st.textContent='human check';
-    var img2 = data.screenshot ? '<img src="data:image/jpeg;base64,'+data.screenshot+'" style="width:100%;max-height:200px;object-fit:cover;object-position:top;border:1px solid var(--line);border-radius:8px;opacity:.9">' : '';
-    body.innerHTML='<div style="color:#b45309;font-size:13px;margin-bottom:8px">USPhonebook asked for a human check this time (normal ~20–40%). Use ↗ Open to solve it in a tab.</div>'+img2;
+    body.innerHTML='<div style="color:#b45309;font-size:13px;margin-bottom:8px">USPhonebook pidió verificación humana. <b>Verifícalo tú mismo</b> aquí (página real en vivo, IP de EE.UU.):</div>'
+      + '<button class="btn primary sm" id="solveBtn">🖱️ Verificar yo mismo</button>';
+    var sb=$('solveBtn'); if(sb) sb.onclick=function(){ startSolve(num); };
   } else {
     st.textContent='not found';
     body.innerHTML='<div style="color:var(--muted);font-size:13px">No public record for '+esc(prettyPhone(num))+' (normal for ~20–40% of numbers).</div>';
   }
+}
+
+/* ===== "Verificar yo mismo": página de USPhonebook EN VIVO (corre en el servidor, IP US). El agente
+   hace clic en el checkbox; el clic se reenvía al servidor. Al pasar Cloudflare, se muestra la ficha. ===== */
+var solveState=null;
+function endSolve(){ if(solveState){ clearInterval(solveState.frame); clearInterval(solveState.poll); solveState=null; } }
+function startSolve(num){
+  var base=callerLookupUrl(), d=digits(num), body=$('callerInfoBody'), st=$('callerInfoStatus');
+  if(!base || d.length!==10) return;
+  endSolve();
+  $('callerInfo').style.display='';
+  st.textContent='abriendo…';
+  body.innerHTML='<div style="color:var(--muted);font-size:13px;padding:6px 0">🖥️ Abriendo la página en vivo (EE.UU.)… espera unos segundos.</div>';
+  fetch(base+'/solve/start?phone='+d).then(function(r){return r.json();}).then(function(j){
+    if(!j || !j.ok){ st.textContent='error'; body.innerHTML='<div style="color:#b91c1c;font-size:13px">No se pudo abrir. Intenta de nuevo.</div>'; return; }
+    solveRun(base, j.sid, j.w||1000, j.h||760, num);
+  }).catch(function(){ st.textContent='error'; body.innerHTML='<div style="color:#b91c1c;font-size:13px">Error de conexión con el bot.</div>'; });
+}
+function solveRun(base, sid, w, h, num){
+  var body=$('callerInfoBody'), st=$('callerInfoStatus');
+  st.textContent='verifica 👆';
+  body.innerHTML=
+    '<div style="color:#166534;font-size:13px;font-weight:700;margin-bottom:6px">👆 Haz clic en el checkbox "Verify you are human" (es la página REAL, en vivo)</div>'
+    +'<img id="solveImg" alt="live" style="width:100%;border:1px solid var(--line);border-radius:8px;cursor:pointer;display:block;background:#f8fafc" />'
+    +'<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn ghost sm" id="solveCancel">✕ Cancelar</button><span id="solveMsg" style="font-size:12px;color:var(--muted)">esperando tu clic…</span></div>';
+  var img=$('solveImg');
+  function refresh(){ if(img) img.src=base+'/solve/frame?sid='+encodeURIComponent(sid)+'&t='+Date.now(); }
+  refresh();
+  var frame=setInterval(refresh, 800);
+  if(img) img.onclick=function(e){
+    var r=img.getBoundingClientRect();
+    var x=Math.round((e.clientX-r.left)/r.width*w), y=Math.round((e.clientY-r.top)/r.height*h);
+    var m=$('solveMsg'); if(m) m.textContent='clic enviado… verificando ⏳';
+    fetch(base+'/solve/click?sid='+encodeURIComponent(sid)+'&x='+x+'&y='+y).catch(function(){});
+  };
+  var tries=0;
+  var poll=setInterval(function(){
+    tries++;
+    if(tries>90){ endSolve(); var m=$('solveMsg'); if(m) m.textContent='⏱️ se agotó — dale "Verificar yo mismo" otra vez'; return; }
+    fetch(base+'/solve/result?sid='+encodeURIComponent(sid)).then(function(r){return r.json();}).then(function(j){
+      if(j && j.ok){ endSolve(); renderCaller(j, num); }   // ¡pasó! → muestra la ficha
+    }).catch(function(){});
+  }, 1500);
+  solveState={ frame:frame, poll:poll };
+  var c=$('solveCancel'); if(c) c.onclick=function(){ endSolve(); st.textContent=''; body.innerHTML='<div style="color:var(--muted);font-size:13px">Cancelado.</div>'; };
 }
 updateLookupLabel();
 $('phone').addEventListener('input', buildMsg);
