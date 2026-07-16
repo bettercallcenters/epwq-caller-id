@@ -480,7 +480,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r40-2026-07-16';
+var APP_VERSION = 'r41-2026-07-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -618,7 +618,7 @@ function renderCaller(data, num){
 /* ===== "Verificar yo mismo": página de USPhonebook EN VIVO (corre en el servidor, IP US). El agente
    hace clic en el checkbox; el clic se reenvía al servidor. Al pasar Cloudflare, se muestra la ficha. ===== */
 var solveState=null;
-function endSolve(){ if(solveState){ clearInterval(solveState.frame); clearInterval(solveState.poll); solveState=null; } }
+function endSolve(){ if(solveState){ solveState.stopped=true; if(solveState.poll) clearInterval(solveState.poll); solveState=null; } }
 function startSolve(num){
   var base=callerLookupUrl(), d=digits(num), body=$('callerInfoBody'), st=$('callerInfoStatus');
   if(!base || d.length!==10) return;
@@ -639,9 +639,11 @@ function solveRun(base, sid, w, h, num){
     +'<img id="solveImg" alt="live" style="width:100%;border:1px solid var(--line);border-radius:8px;cursor:pointer;display:block;background:#f8fafc" />'
     +'<div style="margin-top:6px;display:flex;gap:8px;align-items:center;flex-wrap:wrap"><button class="btn ghost sm" id="solveCancel">✕ Cancelar</button><span id="solveMsg" style="font-size:12px;color:var(--muted)">esperando tu clic…</span></div>';
   var img=$('solveImg');
-  function refresh(){ if(img) img.src=base+'/solve/frame?sid='+encodeURIComponent(sid)+'&t='+Date.now(); }
-  refresh();
-  var frame=setInterval(refresh, 800);
+  var st2={ stopped:false, poll:null };
+  // frames en secuencia (cada uno espera al anterior → sin encimar peticiones = menos lag)
+  function nextFrame(){ if(st2.stopped || !img) return; img.src=base+'/solve/frame?sid='+encodeURIComponent(sid)+'&t='+Date.now(); }
+  if(img){ img.onload=function(){ if(!st2.stopped) setTimeout(nextFrame, 250); }; img.onerror=function(){ if(!st2.stopped) setTimeout(nextFrame, 900); }; }
+  nextFrame();
   if(img) img.onclick=function(e){
     var r=img.getBoundingClientRect();
     var x=Math.round((e.clientX-r.left)/r.width*w), y=Math.round((e.clientY-r.top)/r.height*h);
@@ -649,14 +651,19 @@ function solveRun(base, sid, w, h, num){
     fetch(base+'/solve/click?sid='+encodeURIComponent(sid)+'&x='+x+'&y='+y).catch(function(){});
   };
   var tries=0;
-  var poll=setInterval(function(){
+  st2.poll=setInterval(function(){
     tries++;
-    if(tries>90){ endSolve(); var m=$('solveMsg'); if(m) m.textContent='⏱️ se agotó — dale "Verificar yo mismo" otra vez'; return; }
+    if(tries>22){   // ~33s en "Verifying" = Cloudflare detectó el navegador automático → no va a pasar gratis
+      endSolve();
+      st.textContent='no pasó';
+      body.innerHTML='<div style="color:#b45309;font-size:13px;line-height:1.5">Cloudflare no aceptó la verificación (detecta que es un navegador automático del servidor, no importa el clic). Este reto <b>no se puede pasar gratis</b>. Para USPhonebook confiable se necesita <b>CapSolver (~$6/mes)</b>.<br><br>Mientras, el <b>dueño + dirección</b> ya salen gratis con la dirección de la casa. 👍</div>';
+      return;
+    }
     fetch(base+'/solve/result?sid='+encodeURIComponent(sid)).then(function(r){return r.json();}).then(function(j){
       if(j && j.ok){ endSolve(); renderCaller(j, num); }   // ¡pasó! → muestra la ficha
     }).catch(function(){});
   }, 1500);
-  solveState={ frame:frame, poll:poll };
+  solveState=st2;
   var c=$('solveCancel'); if(c) c.onclick=function(){ endSolve(); st.textContent=''; body.innerHTML='<div style="color:var(--muted);font-size:13px">Cancelado.</div>'; };
 }
 updateLookupLabel();
