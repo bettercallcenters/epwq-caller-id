@@ -187,6 +187,7 @@
         <div class="sp" id="incActions" style="display:none;gap:6px;flex-wrap:wrap">
           <button class="btn sm" id="answerBtn" style="background:#16a34a;color:#fff;border-color:#16a34a;font-weight:700">📞 Answer</button>
           <button class="btn ghost sm" id="rejectBtn">✕ Reject</button>
+          <button class="btn ghost sm" id="muteCallBtn" style="display:none">🎤 Mute</button>
           <button class="btn ghost sm" id="hangupBtn" style="display:none">📵 Hang up</button>
           <button class="btn ghost sm" id="incUsp">🔎 USPhonebook</button>
         </div>
@@ -946,6 +947,22 @@ if($('answerBtn')) $('answerBtn').addEventListener('click', function(){ rcContro
 if($('rejectBtn')) $('rejectBtn').addEventListener('click', function(){ rcControl('reject'); });
 if($('hangupBtn')) $('hangupBtn').addEventListener('click', function(){ rcControl('hangup'); });
 
+// Mute / Unmute del micrófono de la llamada (RingCentral control-call)
+var callMuted=false;
+function setCallMuted(m){
+  callMuted=m;
+  var b=$('muteCallBtn'); if(!b) return;
+  b.textContent = m ? '🔇 Muted' : '🎤 Mute';
+  b.style.background  = m ? '#fee2e2' : '';
+  b.style.color       = m ? '#b91c1c' : '';
+  b.style.borderColor = m ? '#fca5a5' : '';
+  b.style.fontWeight  = m ? '800' : '';
+}
+if($('muteCallBtn')) $('muteCallBtn').addEventListener('click', function(){
+  if(callMuted){ rcControl('unmute'); setCallMuted(false); }
+  else { rcControl('mute'); setCallMuted(true); toast('🔇 Muted'); }
+});
+
 /* ============================================================
    MAPS: 🛰️ Roof (solar) + 🗺️ Area (main streets highlighted)
    Two maps at once. Google if the key works; else Esri + OSM (free).
@@ -1387,6 +1404,8 @@ function onIncoming(num, answered, from){
   if($('answerBtn')) $('answerBtn').style.display = answered ? 'none' : '';
   if($('rejectBtn')) $('rejectBtn').style.display = answered ? 'none' : '';
   if($('hangupBtn')) $('hangupBtn').style.display = answered ? '' : 'none';
+  if($('muteCallBtn')) $('muteCallBtn').style.display = answered ? '' : 'none';   // mute solo con llamada contestada
+  if(!answered) setCallMuted(false);                                              // llamada nueva/sonando → parte sin mute
   if(num){ $('phone').value = pretty; buildMsg(); }
 
   // AUTO: busca la info del cliente en el bot (una vez por número) y la muestra dentro de la app
@@ -1407,6 +1426,7 @@ function onIncoming(num, answered, from){
 function callEnded(){
   alertStop();
   callIsActive = false;                                              // la llamada terminó
+  try{ setCallMuted(false); }catch(e){}                              // resetea el mute para la próxima llamada
   try{ if(dgConnected) dgDisconnect(); }catch(e){}                   // apaga el transcript SIEMPRE al terminar (todos los caminos)
   lastLookedUp='';   // la próxima llamada (aunque sea el mismo número) vuelve a buscar
   window.__rcCallId = null;
