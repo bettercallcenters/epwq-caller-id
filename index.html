@@ -478,7 +478,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r35-2026-07-16';
+var APP_VERSION = 'r36-2026-07-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -551,7 +551,8 @@ $('incUsp').addEventListener('click', function(){
 
 /* ===== Caller info: busca en el bot (Playwright/Railway) y lo muestra DENTRO de la app ===== */
 var LOOKUP_KEY='epwq_caller_lookup_url';
-function callerLookupUrl(){ return (localStorage.getItem(LOOKUP_KEY)||'').trim().replace(/\/+$/,''); }
+var DEFAULT_LOOKUP_URL = 'https://epwq-usphonebook-bot-production.up.railway.app';   // bot USPhonebook (Railway) — activo para todos
+function callerLookupUrl(){ return (localStorage.getItem(LOOKUP_KEY) || DEFAULT_LOOKUP_URL).trim().replace(/\/+$/,''); }
 function updateLookupLabel(){ var b=$('lookupCfg'); if(b) b.textContent='🪪 Caller lookup: '+(callerLookupUrl()?'on ✔':'off'); }
 if($('lookupCfg')) $('lookupCfg').addEventListener('click', function(){
   var v=prompt('Paste your USPhonebook lookup bot URL (from Railway).\nExample: https://your-app.up.railway.app\n\nLeave empty to turn it off.', callerLookupUrl());
@@ -587,7 +588,8 @@ function renderCaller(data, num){
   if(data && data.ok){
     st.textContent = data.cached ? 'from cache' : 'found ✔';
     var rows=[];
-    if(data.name)    rows.push('<div style="font-size:16px;font-weight:800">'+esc(data.name)+'</div>');
+    var nm = (data.name && !/usphonebook|www\.|https?:|\.com/i.test(data.name)) ? data.name : '';   // ignora el título del sitio
+    if(nm)           rows.push('<div style="font-size:16px;font-weight:800">'+esc(nm)+'</div>');
     if(data.aka)     rows.push('<div style="font-size:12px;color:var(--muted);margin-top:2px">Also known as: '+esc(data.aka)+'</div>');
     if(data.age)     rows.push('<div style="font-size:13px;margin-top:5px">🎂 '+esc(data.age)+'</div>');
     if(data.address) rows.push('<div style="font-size:14px;margin-top:5px">🏠 '+esc(data.address)+'</div>');
