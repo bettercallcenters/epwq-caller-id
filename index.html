@@ -504,7 +504,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r54-2026-07-17';
+var APP_VERSION = 'r55-2026-07-17';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -613,9 +613,9 @@ function renderCaller(data, num){
   var body=$('callerInfoBody'), st=$('callerInfoStatus');
   if(data && data.url){ $('callerInfoOpen').href=data.url; $('callerInfoOpen').style.display=''; }
   if(data && data.ok){
-    var nm = (data.name && !/usphonebook|www\.|https?:|\.com/i.test(data.name)) ? data.name : '';
+    var nm = (data.name && !/usphonebook|www\.|https?:|\.com/i.test(data.name)) ? data.name : (data.owner || '');
     var ph = [data.phone,data.lineType,data.carrier].filter(Boolean).join(' · ');
-    var hasFields = !!(nm || data.aka || data.age || data.address || ph);
+    var hasFields = !!(nm || data.owner || data.location || data.relatives || data.aka || data.age || data.address || ph);
     if(!hasFields){   // pasó Cloudflare pero la página vino VACÍA (proxy lento / sin registro / soft-block) → no mostrar caja en blanco
       st.textContent='no details';
       body.innerHTML='<div style="color:#b45309;font-size:13px;margin-bottom:8px">USPhonebook returned an empty page (slow load, no listing, or a soft-block). Try again:</div>'
@@ -625,11 +625,14 @@ function renderCaller(data, num){
     }
     st.textContent = data.cached ? 'from cache' : 'found ✔';
     var rows=[];
-    if(nm)           rows.push('<div style="font-size:16px;font-weight:800">'+esc(nm)+'</div>');
-    if(data.aka)     rows.push('<div style="font-size:12px;color:var(--muted);margin-top:2px">Also known as: '+esc(data.aka)+'</div>');
-    if(data.age)     rows.push('<div style="font-size:13px;margin-top:5px">🎂 '+esc(data.age)+'</div>');
-    if(data.address) rows.push('<div style="font-size:14px;margin-top:5px">🏠 '+esc(data.address)+'</div>');
-    if(ph)           rows.push('<div style="font-size:13px;margin-top:5px">📞 '+esc(ph)+'</div>');
+    if(nm)            rows.push('<div style="font-size:16px;font-weight:800">'+esc(nm)+'</div>');
+    if(data.location) rows.push('<div style="font-size:13px;color:var(--muted);margin-top:2px">📍 '+esc(data.location)+'</div>');
+    if(data.aka)      rows.push('<div style="font-size:12px;color:var(--muted);margin-top:2px">Also known as: '+esc(data.aka)+'</div>');
+    if(data.age)      rows.push('<div style="font-size:13px;margin-top:5px">🎂 '+esc(data.age)+'</div>');
+    if(data.address)  rows.push('<div style="font-size:14px;margin-top:5px">🏠 '+esc(data.address)+'</div>');
+    else if(nm)       rows.push('<div style="font-size:12px;color:var(--muted);margin-top:5px">🏠 Street address is paywalled on USPhonebook — use <b>Find owner</b> for the exact address.</div>');
+    if(ph)            rows.push('<div style="font-size:13px;margin-top:5px">📞 '+esc(ph)+'</div>');
+    if(data.relatives)rows.push('<div style="font-size:12px;color:var(--muted);margin-top:5px">👪 '+esc(data.relatives)+'</div>');
     var fields = '<div style="margin-bottom:'+(data.screenshot?'10px':'0')+'">'+rows.join('')+'</div>';
     var imgStyle = 'width:100%;max-height:260px;object-fit:cover;object-position:top;border:1px solid var(--line);border-radius:8px';
     var img = data.screenshot ? '<img src="data:image/jpeg;base64,'+data.screenshot+'" alt="USPhonebook result" style="'+imgStyle+'">' : '';
