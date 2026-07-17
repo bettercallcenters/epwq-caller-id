@@ -175,8 +175,7 @@
 </header>
 
 <div class="wrap">
-  <!-- ============= COLUMNA IZQUIERDA: CALL INFO + TRANSCRIPT ============= -->
-  <div style="display:flex;flex-direction:column;gap:16px">
+  <!-- ================= COLUMNA IZQUIERDA: CALL INFO ================= -->
   <div class="card">
     <h2><span class="step">1</span> Call Info</h2>
     <div class="body">
@@ -224,6 +223,27 @@
         <div class="seg" id="countySeg">
           <button data-c="epcad" class="on">EPCAD — El Paso, TX <span class="badge tx">TX</span></button>
           <button data-c="dona">Doña Ana — Las Cruces, NM <span class="badge nm">NM</span></button>
+        </div>
+      </div>
+
+      <!-- ===== LIVE TRANSCRIPT (dentro de Call Info, debajo de "Where is the call from") ===== -->
+      <div class="field" style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--soft)">
+        <div id="trBlock">
+          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
+            <span class="badge" style="background:#dcfce7;color:#166534;font-weight:700">🎧 Live transcript · Auto — starts when you answer</span>
+            <button class="btn ghost sm" id="trBtn" style="font-size:12px;opacity:.7">start manually</button>
+            <span class="badge" style="background:#fef3c7;color:#b45309">beta</span>
+            <label style="font-size:12px;color:var(--muted);white-space:nowrap">Your name:</label>
+            <input type="text" id="agentName" placeholder="Hector" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px" />
+            <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Clear</button>
+          </div>
+          <div class="hintline" id="trStatus" style="margin:0 0 8px">Arms itself the <b>first time you answer a call</b> (Chrome asks to share this tab once). After that, <b>every call transcribes automatically</b> — no button per call.</div>
+          <div id="dgMeters" style="display:none;gap:14px;margin:0 0 8px;font-size:12px;color:var(--muted)">
+            <div style="flex:1">🎤 You (mic)<div class="meterTrack"><div id="meterMic" class="meterFill"></div></div></div>
+            <div style="flex:1">📞 Call (client)<div class="meterTrack"><div id="meterCall" class="meterFill"></div></div></div>
+          </div>
+          <div id="trHUD" style="height:200px;min-height:100px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:12px;font-size:14px;line-height:1.55"></div>
+          <div class="hintline" style="margin-top:4px">Scroll up/down to review the conversation, and drag the corner ↘ to make it bigger.</div>
         </div>
       </div>
 
@@ -301,31 +321,6 @@
     </div>
   </div>
 
-    <!-- ===== LIVE TRANSCRIPT (izquierda, debajo de Call Info) ===== -->
-    <div class="card">
-      <h2>🎧 Live transcript</h2>
-      <div class="body">
-        <div id="trBlock">
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-            <span class="badge" style="background:#dcfce7;color:#166534;font-weight:700">🎧 Auto — starts when you answer</span>
-            <button class="btn ghost sm" id="trBtn" style="font-size:12px;opacity:.7">start manually</button>
-            <span class="badge" style="background:#fef3c7;color:#b45309">beta</span>
-            <label style="font-size:12px;color:var(--muted);white-space:nowrap">Your name:</label>
-            <input type="text" id="agentName" placeholder="Hector" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px" />
-            <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Clear</button>
-          </div>
-          <div class="hintline" id="trStatus" style="margin:0 0 8px">Arms itself the <b>first time you answer a call</b> (Chrome asks to share this tab once). After that, <b>every call transcribes automatically</b> — no button per call.</div>
-          <div id="dgMeters" style="display:none;gap:14px;margin:0 0 8px;font-size:12px;color:var(--muted)">
-            <div style="flex:1">🎤 You (mic)<div class="meterTrack"><div id="meterMic" class="meterFill"></div></div></div>
-            <div style="flex:1">📞 Call (client)<div class="meterTrack"><div id="meterCall" class="meterFill"></div></div></div>
-          </div>
-          <div id="trHUD" style="height:200px;min-height:100px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:12px;font-size:14px;line-height:1.55"></div>
-          <div class="hintline" style="margin-top:4px">Scroll up/down to review the conversation, and drag the corner ↘ to make it bigger.</div>
-        </div>
-      </div>
-    </div>
-  </div>
-
   <!-- ============= COLUMNA DERECHA: MENSAJE + CITA + SOFTPHONE ============= -->
   <div style="display:flex;flex-direction:column;gap:16px">
 
@@ -345,7 +340,7 @@
         <div class="msgbox" id="msg"></div>
         <div class="row" style="margin-top:10px">
           <button class="btn primary" id="copyMsg">📋 Copy message</button>
-          <button class="btn" id="waMsg" style="background:#25D366;color:#fff;border-color:#1da851">📲 Send to WhatsApp</button>
+          <button class="btn" id="waMsg" style="background:#25D366;color:#fff;border-color:#1da851">📲 Send to EL PASO CALL CENTER WP GROUP</button>
           <button class="btn ghost" id="smsMsg">💬 Prefill SMS</button>
         </div>
         <div style="font-size:11px;color:var(--muted);margin-top:6px">📲 sends the message straight to the <b>EL PASO CALL CENTER</b> WhatsApp group via the bot.</div>
@@ -511,7 +506,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r51-2026-07-17';
+var APP_VERSION = 'r52-2026-07-17';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
