@@ -257,7 +257,9 @@
           <a id="ownerPanelOpen" class="btn ghost sm" href="#" target="_blank" rel="noopener" style="margin-left:auto">↗ Open in tab</a>
           <button class="btn ghost sm" id="ownerPanelClose">✕</button>
         </div>
-        <iframe id="ownerFrame" style="width:100%;height:360px;border:1px solid var(--line);border-radius:12px;background:#fff"></iframe>
+        <div id="ownerFrameCrop" style="overflow:hidden;height:235px;border:1px solid var(--line);border-radius:12px;background:#fff">
+          <iframe id="ownerFrame" scrolling="no" style="width:100%;height:640px;border:0;margin-top:-92px;background:#fff"></iframe>
+        </div>
         <div id="ownerLaunch" style="display:none;border:1px dashed var(--line);border-radius:12px;background:#f8fafc;padding:22px 18px;text-align:center">
           <div id="ownerLaunchMsg" style="color:var(--muted);font-size:14px;line-height:1.5;margin-bottom:14px"></div>
           <a id="ownerLaunchBtn" class="btn" href="#" target="_blank" rel="noopener" style="font-size:15px;display:inline-block">↗ Open <span id="ownerLaunchSite">site</span> in a new tab</a>
@@ -507,7 +509,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r47-2026-07-16';
+var APP_VERSION = 'r48-2026-07-17';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -826,7 +828,7 @@ function parseHouseStreet(addr){
 // Panel del dueño: EPCAD se embebe; Doña Ana/USPhonebook bloquean iframe → lanzador en el MISMO lugar
 function ownerShowEmbed(url, title){
   $('ownerPanelTitle').textContent = title || '🏠 County record — owner';
-  $('ownerFrame').style.display=''; $('ownerFrame').src = url;
+  $('ownerFrameCrop').style.display=''; $('ownerFrame').src = url;
   $('ownerLaunch').style.display='none'; $('ownerGis').style.display='none';
   $('ownerPanelOpen').href = url; $('ownerPanelOpen').style.display='';
   $('ownerPanel').style.display = '';
@@ -834,7 +836,7 @@ function ownerShowEmbed(url, title){
 }
 function ownerShowLaunch(url, siteName, title, msgHtml){
   $('ownerPanelTitle').textContent = title;
-  $('ownerFrame').style.display='none'; $('ownerFrame').src='about:blank';
+  $('ownerFrameCrop').style.display='none'; $('ownerFrame').src='about:blank';
   $('ownerGis').style.display='none';
   $('ownerLaunch').style.display='';
   $('ownerLaunchSite').textContent = siteName;
@@ -847,7 +849,7 @@ function ownerShowLaunch(url, siteName, title, msgHtml){
 // Panel con la ficha del GIS (Doña Ana) — se llena en fetchCountyOwner
 function ownerShowGis(title){
   $('ownerPanelTitle').textContent = title;
-  $('ownerFrame').style.display='none'; $('ownerFrame').src='about:blank';
+  $('ownerFrameCrop').style.display='none'; $('ownerFrame').src='about:blank';
   $('ownerLaunch').style.display='none';
   $('ownerGis').style.display='';
   $('ownerPanelOpen').style.display='none';
@@ -983,16 +985,18 @@ function agentCodeFor(name, ext){
   for(var i=0;i<AGENT_MAP.length;i++){ var m=AGENT_MAP[i]; if((name && m.re.test(name)) || (ext && m.ext.indexOf(ext)>=0)) return m.code; }
   return '';
 }
-function applyDetectedAgent(name, ext){
+function applyDetectedAgent(name, ext, source, lock){
   var code = agentCodeFor(name, ext);
   var note=$('agentAuto');
-  if(!code){ if(note){ note.style.display='none'; } return; }   // desconocido → deja el switch manual
-  window.__agentDetected = true;
+  if(!code){ return; }   // nombre desconocido → deja lo que haya (switch manual)
+  if(lock) window.__agentDetected = true;   // RingCentral confirmado → deja de reintentar
   state.agent = code; segMark('agentSeg','agent',code);
   try{ localStorage.setItem('epwq_agent', code); }catch(_){}
-  if(note){ note.style.display=''; note.textContent='✔ Detected from RingCentral: '+(name || ('ext '+ext))+' → '+code; }
+  if(note){ note.style.display=''; note.textContent='✔ You are posting as '+code+' — '+(name || ('ext '+ext))+' (auto, from '+(source||'RingCentral')+')'; }
   buildMsg();
 }
+// Respaldo confiable: deducir el agente del campo "Your name" (ya trae el nombre de la persona)
+function detectAgentFromName(){ var nm=($('agentName')&&$('agentName').value||'').trim(); if(nm) applyDetectedAgent(nm, '', 'your name', false); }
 function requestRcExtension(tries){
   if(window.__agentDetected) return;
   var frame=document.querySelector('#rc-widget-adapter-frame');
@@ -1427,10 +1431,14 @@ window.addEventListener('message', function(e){
   }
 
   // Respuesta de RingCentral con la extensión logueada → detecta el agente (HS/GD/DV)
-  if(d.type === 'rc-adapter-message-response' && d.path === '/restapi/v1.0/account/~/extension/~'){
-    var info = d.responseData || {};
-    var nm = info.name || (info.contact ? ((info.contact.firstName||'')+' '+(info.contact.lastName||'')).trim() : '');
-    applyDetectedAgent(nm, info.extensionNumber || '');
+  if(d.type === 'rc-adapter-message-response'){
+    var resp = d.response || d.responseData || d.body || d.data || {};
+    if(resp && resp.data && !resp.extensionNumber && !resp.name) resp = resp.data;   // algunas versiones anidan
+    if(resp && (resp.extensionNumber || resp.name || resp.contact)){
+      var nm = resp.name || (resp.contact ? ((resp.contact.firstName||'')+' '+(resp.contact.lastName||'')).trim() : '');
+      try{ console.log('RC extension detected:', nm, resp.extensionNumber); }catch(_){}
+      applyDetectedAgent(nm, resp.extensionNumber || '', 'RingCentral', true);
+    }
   }
 
   // Eventos de llamada — con máquina de estado robusta (evita "INCOMING CALL" fantasma tras colgar)
@@ -1920,7 +1928,8 @@ var dgLevel=[0,0], dgMeterTimer=null, dgClientBuf='';
 // Nombre del agente (Héctor / Guillermo / Divine) — se guarda en este navegador
 var AGENT_NAME_KEY='epwq_agent_name';
 $('agentName').value = localStorage.getItem(AGENT_NAME_KEY) || '';
-$('agentName').addEventListener('input', function(){ localStorage.setItem(AGENT_NAME_KEY, this.value.trim()); });
+detectAgentFromName();   // deduce HS/GD/DV del nombre al cargar (ej. "Hector" → HS)
+$('agentName').addEventListener('input', function(){ localStorage.setItem(AGENT_NAME_KEY, this.value.trim()); detectAgentFromName(); });
 function agentLabel(){ return ($('agentName').value||'').trim() || 'Agente'; }
 
 $('trClear').addEventListener('click', function(){
