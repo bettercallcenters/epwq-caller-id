@@ -330,12 +330,13 @@
       <h2><span class="step">2</span> Appointment Message (FWD)</h2>
       <div class="body compact" style="padding:12px 14px">
         <div class="field" style="margin-bottom:8px">
-          <label>Agent — who booked this appointment</label>
+          <label>Agent — who booked (auto-detected from RingCentral)</label>
           <div class="seg" id="agentSeg">
             <button data-agent="HS">HS · Hector</button>
             <button data-agent="GD">GD · Guillermo</button>
             <button data-agent="DV">DV · Divine</button>
           </div>
+          <div id="agentAuto" style="display:none;font-size:11px;color:#1a7a3a;margin-top:4px;font-weight:600"></div>
         </div>
         <div class="msgbox" id="msg"></div>
         <div class="row" style="margin-top:10px">
@@ -506,7 +507,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r46-2026-07-16';
+var APP_VERSION = 'r47-2026-07-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -967,8 +968,40 @@ $('roleSeg').addEventListener('click', function(e){ var b=e.target.closest('butt
 $('waterSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.water=(state.water===b.dataset.water)?'':b.dataset.water; segMark('waterSeg','water',state.water); buildMsg(); });
 $('agentSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.agent=b.dataset.agent; segMark('agentSeg','agent',state.agent); try{ localStorage.setItem('epwq_agent', state.agent); }catch(_){}; buildMsg(); });
 function setRole(r){ state.role=r; segMark('roleSeg','role',r); buildMsg(); }
-// Recordar el agente por navegador (cada agente lo elige una vez)
+// Recordar el agente por navegador (respaldo si RingCentral no está logueado)
 (function(){ try{ var a=localStorage.getItem('epwq_agent'); if(a){ state.agent=a; segMark('agentSeg','agent',a); } }catch(_){} })();
+
+/* Detectar automáticamente el agente según QUIÉN inició sesión en RingCentral.
+   RingCentral Embeddable deja consultar la extensión logueada por postMessage. */
+var AGENT_MAP = [
+  { code:'HS', re:/hector|sandoval/i,          ext:[] },
+  { code:'GD', re:/guiller|delanh|delani/i,     ext:['124'] },
+  { code:'DV', re:/divine|vine/i,               ext:['127'] }
+];
+function agentCodeFor(name, ext){
+  name=String(name||''); ext=String(ext||'');
+  for(var i=0;i<AGENT_MAP.length;i++){ var m=AGENT_MAP[i]; if((name && m.re.test(name)) || (ext && m.ext.indexOf(ext)>=0)) return m.code; }
+  return '';
+}
+function applyDetectedAgent(name, ext){
+  var code = agentCodeFor(name, ext);
+  var note=$('agentAuto');
+  if(!code){ if(note){ note.style.display='none'; } return; }   // desconocido → deja el switch manual
+  window.__agentDetected = true;
+  state.agent = code; segMark('agentSeg','agent',code);
+  try{ localStorage.setItem('epwq_agent', code); }catch(_){}
+  if(note){ note.style.display=''; note.textContent='✔ Detected from RingCentral: '+(name || ('ext '+ext))+' → '+code; }
+  buildMsg();
+}
+function requestRcExtension(tries){
+  if(window.__agentDetected) return;
+  var frame=document.querySelector('#rc-widget-adapter-frame');
+  if(frame && frame.contentWindow){
+    frame.contentWindow.postMessage({ type:'rc-adapter-message-request', path:'/restapi/v1.0/account/~/extension/~', body:{} }, '*');
+  }
+  tries=(tries||0)+1;
+  if(tries<5) setTimeout(function(){ requestRcExtension(tries); }, 2500);   // reintenta hasta que el widget responda
+}
 /* (el campo de texto 'when' se reemplazó por calendario + horario flexible) */
 
 /* ============================================================
@@ -1389,6 +1422,15 @@ window.addEventListener('message', function(e){
   // Login / estado
   if(d.type === 'rc-login-status-notify'){
     $('rcStatus').textContent = d.loggedIn ? 'RingCentral: connected ✔' : 'RingCentral: sign in to the softphone ↘';
+    if(d.loggedIn){ window.__agentDetected=false; setTimeout(function(){ requestRcExtension(0); }, 800); }   // detecta quién se logueó
+    else { window.__agentDetected=false; var na=$('agentAuto'); if(na) na.style.display='none'; }
+  }
+
+  // Respuesta de RingCentral con la extensión logueada → detecta el agente (HS/GD/DV)
+  if(d.type === 'rc-adapter-message-response' && d.path === '/restapi/v1.0/account/~/extension/~'){
+    var info = d.responseData || {};
+    var nm = info.name || (info.contact ? ((info.contact.firstName||'')+' '+(info.contact.lastName||'')).trim() : '');
+    applyDetectedAgent(nm, info.extensionNumber || '');
   }
 
   // Eventos de llamada — con máquina de estado robusta (evita "INCOMING CALL" fantasma tras colgar)
