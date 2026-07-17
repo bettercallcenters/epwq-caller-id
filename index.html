@@ -59,10 +59,11 @@
         text-transform:uppercase;letter-spacing:.4px}
   .field{margin-bottom:10px;position:relative}
   /* Modo compacto (Appointment Details): todo a la vista sin scroll, para agendar EN VIVO */
-  .compact .field{margin-bottom:9px}
-  .compact label{font-size:11px;margin:0 0 4px}
+  .compact .field{margin-bottom:7px}
+  .compact label{font-size:10px;margin:0 0 3px}
   .compact .chip{padding:5px 10px;font-size:12px}
-  .compact .seg button{padding:6px 9px;font-size:12px}
+  .compact .seg{padding:2px;gap:2px}
+  .compact .seg button{padding:5px 9px;font-size:12px}
   .compact input[type=date],.compact select.sel{padding:8px 10px;font-size:14px}
   .compact textarea{min-height:38px;padding:8px 10px;font-size:13px}
   input[type=text],textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;
@@ -360,30 +361,32 @@
             <select id="timeTo" class="sel" style="flex:1;min-width:78px"></select>
           </div>
         </div>
-        <div class="field">
-          <label>Language</label>
-          <div class="seg" id="langSeg">
-            <button data-lang="Spanish">Spanish</button>
-            <button data-lang="English">English</button>
-            <button data-lang="Bilingual">Bilingual</button>
+        <div class="field" style="display:flex;gap:14px;flex-wrap:wrap">
+          <div style="min-width:0">
+            <label>Language</label>
+            <div class="seg" id="langSeg">
+              <button data-lang="Spanish">Spanish</button>
+              <button data-lang="English">English</button>
+              <button data-lang="Bilingual">Bilingual</button>
+            </div>
+          </div>
+          <div style="min-width:0">
+            <label>Role</label>
+            <div class="seg" id="roleSeg">
+              <button data-role="owner" class="on">Owner</button>
+              <button data-role="renter">Renter</button>
+            </div>
           </div>
         </div>
-        <div class="field">
-          <label>Role</label>
-          <div class="seg" id="roleSeg">
-            <button data-role="owner" class="on">Owner</button>
-            <button data-role="renter">Renter</button>
+        <div class="field" style="display:flex;gap:14px;flex-wrap:wrap;align-items:flex-end">
+          <div style="min-width:0">
+            <label>Water source</label>
+            <div class="seg" id="waterSeg">
+              <button data-water="Drinks water from the faucet">🚰 Faucet</button>
+              <button data-water="Drinks bottled water / water jugs">💧 Bottles / Jugs</button>
+            </div>
           </div>
-        </div>
-        <div class="field">
-          <label>Water source</label>
-          <div class="seg" id="waterSeg">
-            <button data-water="Drinks water from the faucet">🚰 Faucet</button>
-            <button data-water="Drinks bottled water / water jugs">💧 Bottles / Jugs</button>
-          </div>
-        </div>
-        <div class="field">
-          <button class="chip" id="hotLead">🔥 Mark as HOT LEAD</button>
+          <button class="chip" id="hotLead" style="margin-bottom:1px">🔥 Mark as HOT LEAD</button>
         </div>
         <div class="field" style="margin-bottom:0">
           <textarea id="notes" placeholder="Notes for the appointment…"></textarea>
@@ -492,7 +495,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r44-2026-07-16';
+var APP_VERSION = 'r45-2026-07-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -2000,7 +2003,7 @@ function dgAppend(ch, text){
 function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
 function dateOff(n){ var d=new Date(); d.setDate(d.getDate()+n); return d; }
 function h12(h){ var x=h%12; return x===0?12:x; }
-function mer(h){ return h<12?'Am':'Pm'; }
+function mer(h){ return h<12?'AM':'PM'; }
 function fmtRange(from,to){
   if(isNaN(from)||isNaN(to)) return '';
   return mer(from)===mer(to) ? (h12(from)+'-'+h12(to)+' '+mer(to))
