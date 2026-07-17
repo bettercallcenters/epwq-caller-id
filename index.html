@@ -217,16 +217,7 @@
         <button class="btn ghost sm" id="lookupCfg" style="margin-left:auto">🪪 Caller lookup: off</button>
       </div>
 
-      <!-- County -->
-      <div class="field">
-        <label>Where is the call from?</label>
-        <div class="seg" id="countySeg">
-          <button data-c="epcad" class="on">EPCAD — El Paso, TX <span class="badge tx">TX</span></button>
-          <button data-c="dona">Doña Ana — Las Cruces, NM <span class="badge nm">NM</span></button>
-        </div>
-      </div>
-
-      <!-- ===== LIVE TRANSCRIPT (dentro de Call Info, debajo de "Where is the call from") ===== -->
+      <!-- ===== LIVE TRANSCRIPT (arriba de "Where is the call from") ===== -->
       <div class="field" style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--soft)">
         <div id="trBlock">
           <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
@@ -244,6 +235,15 @@
           </div>
           <div id="trHUD" style="height:200px;min-height:100px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:12px;font-size:14px;line-height:1.55"></div>
           <div class="hintline" style="margin-top:4px">Scroll up/down to review the conversation, and drag the corner ↘ to make it bigger.</div>
+        </div>
+      </div>
+
+      <!-- County -->
+      <div class="field">
+        <label>Where is the call from?</label>
+        <div class="seg" id="countySeg">
+          <button data-c="epcad" class="on">EPCAD — El Paso, TX <span class="badge tx">TX</span></button>
+          <button data-c="dona">Doña Ana — Las Cruces, NM <span class="badge nm">NM</span></button>
         </div>
       </div>
 
@@ -506,7 +506,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r52-2026-07-17';
+var APP_VERSION = 'r53-2026-07-17';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
