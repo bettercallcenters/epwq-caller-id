@@ -361,21 +361,29 @@
           </div>
         </div>
         <div class="field">
-          <label>Language · Role · Hot lead</label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
-            <span class="chips" id="langChips" style="display:contents">
-              <span class="chip" data-lang="Spanish">Spanish</span>
-              <span class="chip" data-lang="English">English</span>
-              <span class="chip" data-lang="Bilingual">Bilingual</span>
-            </span>
-            <span style="color:var(--line)">|</span>
-            <span class="chips" id="roleChips" style="display:contents">
-              <span class="chip on" data-role="owner">owner</span>
-              <span class="chip" data-role="renter">renter</span>
-            </span>
-            <span style="color:var(--line)">|</span>
-            <button class="chip" id="hotLead">🔥 Mark as HOT LEAD</button>
+          <label>Language</label>
+          <div class="seg" id="langSeg">
+            <button data-lang="Spanish">Spanish</button>
+            <button data-lang="English">English</button>
+            <button data-lang="Bilingual">Bilingual</button>
           </div>
+        </div>
+        <div class="field">
+          <label>Role</label>
+          <div class="seg" id="roleSeg">
+            <button data-role="owner" class="on">Owner</button>
+            <button data-role="renter">Renter</button>
+          </div>
+        </div>
+        <div class="field">
+          <label>Water source</label>
+          <div class="seg" id="waterSeg">
+            <button data-water="Drinks water from the faucet">🚰 Faucet</button>
+            <button data-water="Drinks bottled water / water jugs">💧 Bottles / Jugs</button>
+          </div>
+        </div>
+        <div class="field">
+          <button class="chip" id="hotLead">🔥 Mark as HOT LEAD</button>
         </div>
         <div class="field" style="margin-bottom:0">
           <textarea id="notes" placeholder="Notes for the appointment…"></textarea>
@@ -422,6 +430,7 @@ var state = {
   county: 'epcad',           // 'epcad' (El Paso TX) | 'dona' (Doña Ana NM)
   lang: '',              // sin idioma por defecto — el agente lo elige
   role: 'owner',
+  water: '',             // fuente de agua — el agente lo elige
   hotLead: false,
   addrCompact: '',           // "5513 Edinburg" para el mensaje
 };
@@ -483,7 +492,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r43-2026-07-16';
+var APP_VERSION = 'r44-2026-07-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -933,15 +942,16 @@ $('copyOwner').addEventListener('click', function(){
 document.addEventListener('click', function(e){
   var c = e.target.closest('.chip'); if(!c) return;
   if(c.dataset.day!=null){ setDayOffset(parseInt(c.dataset.day,10)); }
-  if(c.dataset.lang){ state.lang=c.dataset.lang; setOn('langChips',c); buildMsg(); }
-  if(c.dataset.role){ state.role=c.dataset.role; setOn('roleChips',c); buildMsg(); }
 });
-function setOn(group,el){ [].forEach.call($(group).querySelectorAll('.chip'), function(x){ x.classList.toggle('on', x===el); }); }
-function setRole(r){
-  state.role = r;
-  [].forEach.call($('roleChips').querySelectorAll('.chip'), function(x){ x.classList.toggle('on', x.dataset.role===r); });
-  buildMsg();
+// Switches (segmented) para Language / Role / Water source
+function segMark(segId, attr, val){
+  var seg=$(segId); if(!seg) return;
+  [].forEach.call(seg.querySelectorAll('button'), function(x){ x.classList.toggle('on', x.dataset[attr]===val); });
 }
+$('langSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.lang=b.dataset.lang; segMark('langSeg','lang',state.lang); buildMsg(); });
+$('roleSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.role=b.dataset.role; segMark('roleSeg','role',state.role); buildMsg(); });
+$('waterSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.water=(state.water===b.dataset.water)?'':b.dataset.water; segMark('waterSeg','water',state.water); buildMsg(); });
+function setRole(r){ state.role=r; segMark('roleSeg','role',r); buildMsg(); }
 /* (el campo de texto 'when' se reemplazó por calendario + horario flexible) */
 
 /* ============================================================
@@ -960,13 +970,14 @@ function buildMsg(){
   var line4 = (state.lang ? state.lang + '/ ' : '') + state.role;   // idioma solo si el agente lo eligió
   var notes = ($('notes') ? $('notes').value : '').trim();
   var parts = [];
-  if(state.hotLead) parts.push('🔥 HOT LEAD');   // arriba para que resalte
   if(name)  parts.push(name);
   if(addr)  parts.push(addr);
   if(when)  parts.push(when);
   parts.push(line4);
   if(phone) parts.push(phone);
+  if(state.water) parts.push(state.water);       // fuente de agua
   if(notes) parts.push(notes);
+  if(state.hotLead) parts.push('🔥 HOT LEAD');   // al final del mensaje
   $('msg').textContent = parts.join('\n');
 }
 
@@ -1518,12 +1529,6 @@ function callEnded(){
   try{ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; }catch(e){}   // limpia el recuadro del dueño
 }
 
-// Activa el chip cuyo data-<attr>===val dentro de un grupo (langChips / roleChips)
-function activateChip(groupId, attr, val){
-  var g=$(groupId); if(!g) return;
-  [].forEach.call(g.querySelectorAll('.chip'), function(x){ x.classList.toggle('on', x.dataset[attr]===val); });
-}
-
 // LLAMADA NUEVA → todo vuelve al inicio: borra notas/dirección/dueño y regresa la cita a sus valores por defecto
 function resetForNewCall(){
   // Datos de la llamada anterior
@@ -1550,8 +1555,9 @@ function resetForNewCall(){
   try{ setCounty('epcad'); }catch(e){}
   $('apptDate').value=''; updateDayChips();                          // día en blanco
   applyTimeMode('range'); $('timeFrom').value='16'; $('timeTo').value='18';
-  state.lang=''; activateChip('langChips','lang','');               // idioma en blanco (ningún chip 'on')
-  state.role='owner';   activateChip('roleChips','role','owner');
+  state.lang='';  segMark('langSeg','lang','');                     // idioma en blanco (ningún botón 'on')
+  state.role='owner';  segMark('roleSeg','role','owner');
+  state.water=''; segMark('waterSeg','water','');                   // fuente de agua en blanco
   state.hotLead=false;
   var hl=$('hotLead'); if(hl){ hl.classList.remove('on'); hl.textContent='🔥 Mark as HOT LEAD'; }
   buildMsg();
