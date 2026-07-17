@@ -250,6 +250,17 @@
         <div class="hintline" style="margin-top:4px">Shows the owner <b>right here</b> (El Paso and Doña Ana county records) — no re-typing.</div>
       </div>
 
+      <!-- Owner name (justo debajo del botón Find owner) -->
+      <div class="field">
+        <label>Owner name (as shown in the search)</label>
+        <div class="row" style="align-items:stretch">
+          <input type="text" id="owner" placeholder="Ivan y Laura Cifuentes" autocomplete="off" />
+          <button class="btn ghost" id="copyOwner" style="flex:0 0 auto">📋 Copy</button>
+        </div>
+        <div id="ownerCopied" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:var(--ok);background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px">✓ Owner name copied</div>
+        <div id="ownerDetected" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px"></div>
+      </div>
+
       <!-- Recuadro del dueño: EPCAD embebido; Doña Ana/USPhonebook como lanzador (bloquean iframe) -->
       <div class="field" id="ownerPanel" style="display:none">
         <div style="display:flex;align-items:center;gap:8px;margin-bottom:6px">
@@ -265,17 +276,6 @@
           <a id="ownerLaunchBtn" class="btn" href="#" target="_blank" rel="noopener" style="font-size:15px;display:inline-block">↗ Open <span id="ownerLaunchSite">site</span> in a new tab</a>
         </div>
         <div id="ownerGis" style="display:none;border:1px solid var(--line);border-radius:12px;background:#fff;padding:12px 14px"></div>
-      </div>
-
-      <!-- Owner name -->
-      <div class="field">
-        <label>Owner name (as shown in the search)</label>
-        <div class="row" style="align-items:stretch">
-          <input type="text" id="owner" placeholder="Ivan y Laura Cifuentes" autocomplete="off" />
-          <button class="btn ghost" id="copyOwner" style="flex:0 0 auto">📋 Copy</button>
-        </div>
-        <div id="ownerCopied" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:var(--ok);background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px">✓ Owner name copied</div>
-        <div id="ownerDetected" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px"></div>
       </div>
 
       <!-- Mapas compactos: techo (paneles) + zona (calles principales) -->
@@ -509,7 +509,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r48-2026-07-17';
+var APP_VERSION = 'r49-2026-07-17';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
