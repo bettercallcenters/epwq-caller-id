@@ -500,7 +500,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r56-2026-07-17';
+var APP_VERSION = 'r57-2026-07-17';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1445,6 +1445,7 @@ window.addEventListener('message', function(e){
     if(callKey && callKey !== window.__resetCallKey){ window.__resetCallKey = callKey; resetForNewCall(); }
     window.__callActive = true;                                 // solo para que el timer de "Test alert" no borre una llamada real
     onIncoming(from.phoneNumber || from.extensionNumber || '', st === 'answered', from);
+    myPeer = peerLabel(from);                                   // con quién está la llamada (caller ID)
     reportStatus(st === 'answered' ? 'oncall' : 'ringing');   // HUD de equipo
     if(st === 'answered'){ callIsActive = true; if(dgArmed) dgConnect(); }   // AUTO-transcript SOLO al contestar (no en el timbre, no por voz)
   }
@@ -1458,7 +1459,16 @@ window.addEventListener('message', function(e){
 var TEAM_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/rest/v1/agent_status';
 var TEAM_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjbWJia2FrcXFkZ3RldGp2aHh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjA2NzUsImV4cCI6MjA5NzE5NjY3NX0.EF9Pv6XMCp6KSObcrzr4Y6zRHwzjihsqpKCXeT8Z3LM';
 var TEAM_STALE_MS = 45000;   // sin reportar > 45s → se considera offline (app cerrada)
-var myStatus = 'available', teamAlerted = false, teamVoiceUnlocked = false;
+var myStatus = 'available', myPeer = '', teamAlerted = false, teamVoiceUnlocked = false;
+
+// Etiqueta de "con quién" está la llamada: nombre (caller ID) + número
+function peerLabel(from){
+  from = from || {};
+  var nm = (from.name || '').trim();
+  var ph = from.phoneNumber ? prettyPhone(from.phoneNumber) : (from.extensionNumber ? ('ext '+from.extensionNumber) : '');
+  if(nm && ph) return nm + ' · ' + ph;
+  return nm || ph || 'Unknown caller';
+}
 
 function reportStatus(st){
   if(st) myStatus = st;
@@ -1468,7 +1478,7 @@ function reportStatus(st){
     fetch(TEAM_URL, {
       method:'POST',
       headers:{ 'apikey':TEAM_KEY, 'Authorization':'Bearer '+TEAM_KEY, 'Content-Type':'application/json', 'Prefer':'resolution=merge-duplicates' },
-      body: JSON.stringify([{ agent:agent, status:myStatus, updated_at:new Date().toISOString() }])
+      body: JSON.stringify([{ agent:agent, status:myStatus, peer:(myStatus==='available'?null:(myPeer||null)), updated_at:new Date().toISOString() }])
     }).catch(function(){});
   }catch(_){}
 }
@@ -1502,8 +1512,9 @@ function renderTeam(rows){
     var oncall = a.status==='oncall', ring = a.status==='ringing';
     var dot = oncall ? '🔴' : (ring ? '🟡' : '🟢');
     var lbl = oncall ? 'On call' : (ring ? 'Ringing' : 'Available');
+    var withWho = ((oncall||ring) && a.peer) ? ' <span style="color:var(--muted)">with <b style="color:var(--ink);font-weight:700">'+esc(a.peer)+'</b></span>' : '';
     var mine = (a.agent===me) ? ';outline:2px solid var(--accent,#2563eb);outline-offset:1px' : '';
-    return '<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px'+mine+'">'+dot+' <b>'+esc(a.agent||'?')+'</b> · '+lbl+'</span>';
+    return '<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px'+mine+'">'+dot+' <b>'+esc(a.agent||'?')+'</b> · '+lbl+withWho+'</span>';
   }).join('');
   // Alerta: 2+ agentes online y TODOS en llamada
   var busy = online.filter(function(a){ return a.status==='oncall'; }).length;
@@ -1514,7 +1525,7 @@ function renderTeam(rows){
 
 function pollTeam(){
   try{
-    fetch(TEAM_URL+'?select=agent,status,updated_at', { headers:{ 'apikey':TEAM_KEY, 'Authorization':'Bearer '+TEAM_KEY } })
+    fetch(TEAM_URL+'?select=agent,status,peer,updated_at', { headers:{ 'apikey':TEAM_KEY, 'Authorization':'Bearer '+TEAM_KEY } })
       .then(function(r){ return r.json(); })
       .then(function(rows){ renderTeam(rows); })
       .catch(function(){});
@@ -1581,6 +1592,7 @@ function onIncoming(num, answered, from){
 function callEnded(){
   alertStop();
   callIsActive = false;                                              // la llamada terminó
+  try{ myPeer=''; reportStatus('available'); }catch(e){}             // HUD: vuelve a disponible + borra "con quién"
   try{ setCallMuted(false); }catch(e){}                              // resetea el mute para la próxima llamada
   try{ if(dgConnected) dgDisconnect(); }catch(e){}                   // apaga el transcript SIEMPRE al terminar (todos los caminos)
   lastLookedUp='';   // la próxima llamada (aunque sea el mismo número) vuelve a buscar
