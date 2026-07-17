@@ -265,17 +265,6 @@
         <div class="hintline">Type and pick the correct suggestion. Biased to the selected county area.</div>
       </div>
 
-      <!-- Owner name (arriba del botón Find owner) -->
-      <div class="field">
-        <label>Owner name (as shown in the search)</label>
-        <div class="row" style="align-items:stretch">
-          <input type="text" id="owner" placeholder="Ivan y Laura Cifuentes" autocomplete="off" />
-          <button class="btn ghost" id="copyOwner" style="flex:0 0 auto">📋 Copy</button>
-        </div>
-        <div id="ownerCopied" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:var(--ok);background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px">✓ Owner name copied</div>
-        <div id="ownerDetected" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px"></div>
-      </div>
-
       <!-- Find owner -->
       <div class="field">
         <button class="btn primary wide" id="ownerBtn">🏠 Find owner &nbsp;→&nbsp; <span id="ownerBtnLbl">open EPCAD</span></button>
@@ -324,33 +313,19 @@
   <!-- ============= COLUMNA DERECHA: MENSAJE + CITA + SOFTPHONE ============= -->
   <div style="display:flex;flex-direction:column;gap:16px">
 
-    <!-- El MENSAJE arriba (es lo que se copia al grupo — siempre a la vista) -->
-    <div class="card">
-      <h2><span class="step">2</span> Appointment Message (FWD)</h2>
-      <div class="body compact" style="padding:12px 14px">
-        <div class="field" style="margin-bottom:8px">
-          <label>Agent — who booked (auto-detected from RingCentral)</label>
-          <div class="seg" id="agentSeg">
-            <button data-agent="HS">HS · Hector</button>
-            <button data-agent="GD">GD · Guillermo</button>
-            <button data-agent="DV">DV · Divine</button>
-          </div>
-          <div id="agentAuto" style="display:none;font-size:11px;color:#1a7a3a;margin-top:4px;font-weight:600"></div>
-        </div>
-        <div class="msgbox" id="msg"></div>
-        <div class="row" style="margin-top:10px">
-          <button class="btn primary" id="copyMsg">📋 Copy message</button>
-          <button class="btn" id="waMsg" style="background:#25D366;color:#fff;border-color:#1da851">📲 Send to EL PASO CALL CENTER WP GROUP</button>
-          <button class="btn ghost" id="smsMsg">💬 Prefill SMS</button>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:6px">📲 sends the message straight to the <b>EL PASO CALL CENTER</b> WhatsApp group via the bot.</div>
-      </div>
-    </div>
-
     <!-- Detalles COMPACTOS: todo visible sin scroll, ajustes rápidos durante la llamada -->
     <div class="card">
-      <h2><span class="step">3</span> Appointment Details</h2>
+      <h2><span class="step">2</span> Appointment Details</h2>
       <div class="body compact" style="padding:12px 14px">
+        <div class="field">
+          <label>Owner name (as shown in the search)</label>
+          <div class="row" style="align-items:stretch">
+            <input type="text" id="owner" placeholder="Ivan y Laura Cifuentes" autocomplete="off" />
+            <button class="btn ghost" id="copyOwner" style="flex:0 0 auto">📋 Copy</button>
+          </div>
+          <div id="ownerCopied" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:var(--ok);background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px">✓ Owner name copied</div>
+          <div id="ownerDetected" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px"></div>
+        </div>
         <div class="field">
           <label>Day</label>
           <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
@@ -401,6 +376,29 @@
         <div class="field" style="margin-bottom:0">
           <textarea id="notes" placeholder="Notes for the appointment…"></textarea>
         </div>
+      </div>
+    </div>
+
+    <!-- El MENSAJE (se arma con lo capturado en Appointment Details) -->
+    <div class="card">
+      <h2><span class="step">3</span> Appointment Message (FWD)</h2>
+      <div class="body compact" style="padding:12px 14px">
+        <div class="field" style="margin-bottom:8px">
+          <label>Agent — who booked (auto-detected from RingCentral)</label>
+          <div class="seg" id="agentSeg">
+            <button data-agent="HS">HS · Hector</button>
+            <button data-agent="GD">GD · Guillermo</button>
+            <button data-agent="DV">DV · Divine</button>
+          </div>
+          <div id="agentAuto" style="display:none;font-size:11px;color:#1a7a3a;margin-top:4px;font-weight:600"></div>
+        </div>
+        <div class="msgbox" id="msg"></div>
+        <div class="row" style="margin-top:10px">
+          <button class="btn primary" id="copyMsg">📋 Copy message</button>
+          <button class="btn" id="waMsg" style="background:#25D366;color:#fff;border-color:#1da851">📲 Send to EL PASO CALL CENTER WP GROUP</button>
+          <button class="btn ghost" id="smsMsg">💬 Prefill SMS</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">📲 sends the message straight to the <b>EL PASO CALL CENTER</b> WhatsApp group via the bot.</div>
       </div>
     </div>
 
@@ -506,7 +504,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r53-2026-07-17';
+var APP_VERSION = 'r54-2026-07-17';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
