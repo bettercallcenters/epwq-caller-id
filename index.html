@@ -328,12 +328,22 @@
     <!-- El MENSAJE arriba (es lo que se copia al grupo — siempre a la vista) -->
     <div class="card">
       <h2><span class="step">2</span> Appointment Message (FWD)</h2>
-      <div class="body" style="padding:12px 14px">
+      <div class="body compact" style="padding:12px 14px">
+        <div class="field" style="margin-bottom:8px">
+          <label>Agent — who booked this appointment</label>
+          <div class="seg" id="agentSeg">
+            <button data-agent="HS">HS · Hector</button>
+            <button data-agent="GD">GD · Guillermo</button>
+            <button data-agent="DV">DV · Divine</button>
+          </div>
+        </div>
         <div class="msgbox" id="msg"></div>
         <div class="row" style="margin-top:10px">
           <button class="btn primary" id="copyMsg">📋 Copy message</button>
+          <button class="btn" id="waMsg" style="background:#25D366;color:#fff;border-color:#1da851">📲 Send to WhatsApp</button>
           <button class="btn ghost" id="smsMsg">💬 Prefill SMS</button>
         </div>
+        <div style="font-size:11px;color:var(--muted);margin-top:6px">📲 sends the message straight to the <b>EL PASO CALL CENTER</b> WhatsApp group via the bot.</div>
       </div>
     </div>
 
@@ -434,6 +444,7 @@ var state = {
   lang: '',              // sin idioma por defecto — el agente lo elige
   role: 'owner',
   water: '',             // fuente de agua — el agente lo elige
+  agent: '',             // HS / GD / DV — quién agendó (se recuerda por navegador)
   hotLead: false,
   addrCompact: '',           // "5513 Edinburg" para el mensaje
 };
@@ -495,7 +506,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r45-2026-07-16';
+var APP_VERSION = 'r46-2026-07-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -954,7 +965,10 @@ function segMark(segId, attr, val){
 $('langSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.lang=b.dataset.lang; segMark('langSeg','lang',state.lang); buildMsg(); });
 $('roleSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.role=b.dataset.role; segMark('roleSeg','role',state.role); buildMsg(); });
 $('waterSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.water=(state.water===b.dataset.water)?'':b.dataset.water; segMark('waterSeg','water',state.water); buildMsg(); });
+$('agentSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.agent=b.dataset.agent; segMark('agentSeg','agent',state.agent); try{ localStorage.setItem('epwq_agent', state.agent); }catch(_){}; buildMsg(); });
 function setRole(r){ state.role=r; segMark('roleSeg','role',r); buildMsg(); }
+// Recordar el agente por navegador (cada agente lo elige una vez)
+(function(){ try{ var a=localStorage.getItem('epwq_agent'); if(a){ state.agent=a; segMark('agentSeg','agent',a); } }catch(_){} })();
 /* (el campo de texto 'when' se reemplazó por calendario + horario flexible) */
 
 /* ============================================================
@@ -981,6 +995,7 @@ function buildMsg(){
   if(state.water) parts.push(state.water);       // fuente de agua
   if(notes) parts.push(notes);
   if(state.hotLead) parts.push('🔥 HOT LEAD');   // al final del mensaje
+  if(state.agent) parts.push('AGENT: ' + state.agent);   // quién agendó (HS/GD/DV)
   $('msg').textContent = parts.join('\n');
 }
 
@@ -1005,6 +1020,25 @@ function copy(text){
 }
 $('copyMsg').addEventListener('click', function(){
   copy($('msg').textContent).then(function(){ toast('Message copied ✔'); });
+});
+
+/* Enviar el mensaje directo al grupo de WhatsApp "EL PASO CALL CENTER" vía el bot (Baileys) */
+function waBase(){ return (callerLookupUrl() || DEFAULT_LOOKUP_URL); }
+$('waMsg').addEventListener('click', function(){
+  var text = $('msg').textContent.trim();
+  if(!text){ toast('Nothing to send yet'); return; }
+  if(!state.agent){ toast('Pick your AGENT code first (HS / GD / DV)'); return; }
+  var btn=this, old=btn.textContent;
+  btn.disabled=true; btn.textContent='Sending…';
+  fetch(waBase()+'/wa/send', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text:text, agent:state.agent }) })
+    .then(function(r){ return r.json().catch(function(){ return {ok:false,error:'bad response'}; }); })
+    .then(function(d){
+      if(d && d.ok){ toast('Sent to EL PASO CALL CENTER ✔'); }
+      else if(d && d.needQr){ toast('WhatsApp bot not linked yet — scan the QR at '+waBase()+'/wa'); }
+      else { toast('WhatsApp bot error: '+((d&&d.error)||'not connected')); }
+    })
+    .catch(function(){ toast('Could not reach the WhatsApp bot'); })
+    .finally(function(){ btn.disabled=false; btn.textContent=old; });
 });
 
 /* Prellenar SMS en el widget de RingCentral (tú das enviar) */
