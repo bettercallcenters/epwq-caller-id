@@ -175,7 +175,8 @@
 </header>
 
 <div class="wrap">
-  <!-- ================= COLUMNA IZQUIERDA: FLUJO ================= -->
+  <!-- ============= COLUMNA IZQUIERDA: CALL INFO + TRANSCRIPT ============= -->
+  <div style="display:flex;flex-direction:column;gap:16px">
   <div class="card">
     <h2><span class="step">1</span> Call Info</h2>
     <div class="body">
@@ -300,10 +301,7 @@
     </div>
   </div>
 
-  <!-- ================= COLUMNA DERECHA: SOFTPHONE + CITA + MENSAJE ================= -->
-  <div style="display:flex;flex-direction:column;gap:16px">
-
-    <!-- ===== LIVE TRANSCRIPT (arriba a la derecha: ver lo que se dice en la llamada) ===== -->
+    <!-- ===== LIVE TRANSCRIPT (izquierda, debajo de Call Info) ===== -->
     <div class="card">
       <h2>🎧 Live transcript</h2>
       <div class="body">
@@ -326,6 +324,10 @@
         </div>
       </div>
     </div>
+  </div>
+
+  <!-- ============= COLUMNA DERECHA: MENSAJE + CITA + SOFTPHONE ============= -->
+  <div style="display:flex;flex-direction:column;gap:16px">
 
     <!-- El MENSAJE arriba (es lo que se copia al grupo — siempre a la vista) -->
     <div class="card">
@@ -509,7 +511,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r50-2026-07-17';
+var APP_VERSION = 'r51-2026-07-17';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
