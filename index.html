@@ -28,23 +28,23 @@
   header .sub{font-size:12px;opacity:.9;margin-top:2px}
   header .who{margin-left:auto;font-size:12px;opacity:.9;text-align:right}
 
-  .wrap{max-width:1120px;margin:12px auto;padding:0 12px;display:grid;
-        grid-template-columns:1.15fr .85fr;gap:12px}
+  .wrap{max-width:1120px;margin:8px auto;padding:0 10px;display:grid;
+        grid-template-columns:1.15fr .85fr;gap:10px}
   @media (max-width:900px){.wrap{grid-template-columns:1fr}}
   /* Reserva espacio a la derecha para el softphone flotante de RingCentral (no tapa el contenido) */
   @media (min-width:1024px){ body{padding-right:330px} }
 
-  .card{background:var(--panel);border:1px solid var(--line);border-radius:14px;box-shadow:var(--shadow);
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:12px;box-shadow:var(--shadow);
         overflow:hidden}
-  .card h2{font-size:12px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
-        margin:0;padding:9px 14px;border-bottom:1px solid var(--line);background:var(--soft);
-        display:flex;align-items:center;gap:8px}
-  .card .body{padding:12px 14px}
+  .card h2{font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--muted);
+        margin:0;padding:7px 12px;border-bottom:1px solid var(--line);background:var(--soft);
+        display:flex;align-items:center;gap:7px}
+  .card .body{padding:10px 12px}
   .step{display:inline-grid;place-items:center;width:20px;height:20px;border-radius:50%;
         background:var(--brand);color:#fff;font-size:12px;font-weight:700}
 
   /* Incoming banner */
-  #incoming{margin:0 0 10px;border-radius:12px;padding:10px 14px;border:1px dashed var(--line);
+  #incoming{margin:0 0 8px;border-radius:10px;padding:8px 12px;border:1px dashed var(--line);
         background:var(--soft);color:var(--muted);display:flex;align-items:center;gap:12px}
   #incoming.live{background:linear-gradient(90deg,#dcfce7,#f0fdf4);border:1px solid #86efac;color:#065f46;
         animation:pulse 1.2s ease-in-out infinite}
@@ -55,9 +55,9 @@
   #incoming .lbl{font-size:12px;text-transform:uppercase;letter-spacing:.6px;opacity:.8}
   #incoming .sp{margin-left:auto;display:flex;gap:8px}
 
-  label{display:block;font-size:12px;font-weight:600;color:var(--muted);margin:0 0 5px;
+  label{display:block;font-size:11px;font-weight:600;color:var(--muted);margin:0 0 4px;
         text-transform:uppercase;letter-spacing:.4px}
-  .field{margin-bottom:10px;position:relative}
+  .field{margin-bottom:7px;position:relative}
   /* Modo compacto (Appointment Details): todo a la vista sin scroll, para agendar EN VIVO */
   .compact .field{margin-bottom:7px}
   .compact label{font-size:10px;margin:0 0 3px}
@@ -66,18 +66,18 @@
   .compact .seg button{padding:5px 9px;font-size:12px}
   .compact input[type=date],.compact select.sel{padding:8px 10px;font-size:14px}
   .compact textarea{min-height:38px;padding:8px 10px;font-size:13px}
-  input[type=text],textarea{width:100%;padding:9px 11px;border:1px solid var(--line);border-radius:10px;
+  input[type=text],textarea{width:100%;padding:8px 10px;border:1px solid var(--line);border-radius:9px;
         font-size:14px;color:var(--ink);background:#fff;outline:none;transition:border .15s,box-shadow .15s}
   input[type=text]:focus,textarea:focus{border-color:var(--brand2);box-shadow:0 0 0 3px rgba(14,165,233,.15)}
-  textarea{resize:vertical;min-height:120px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
+  textarea{resize:vertical;min-height:70px;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px}
 
   .row{display:flex;gap:10px}.row>*{flex:1}
   input[type=date],select.sel{padding:9px 11px;border:1px solid var(--line);border-radius:10px;
         font-size:14px;background:#fff;color:var(--ink);outline:none;font-family:inherit}
   input[type=date]:focus,select.sel:focus{border-color:var(--brand2);box-shadow:0 0 0 3px rgba(14,165,233,.15)}
 
-  .btn{appearance:none;border:1px solid transparent;border-radius:10px;padding:10px 14px;font-size:14px;
-        font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:7px;justify-content:center;
+  .btn{appearance:none;border:1px solid transparent;border-radius:9px;padding:8px 12px;font-size:13px;
+        font-weight:600;cursor:pointer;display:inline-flex;align-items:center;gap:6px;justify-content:center;
         transition:transform .05s,filter .15s}
   .btn:active{transform:translateY(1px)}
   .btn.primary{background:var(--brand);color:#fff}
@@ -88,8 +88,8 @@
   .btn.sm{padding:7px 10px;font-size:13px}
 
   /* segmented / chips */
-  .seg{display:inline-flex;background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:3px;gap:3px}
-  .seg button{border:0;background:transparent;padding:8px 12px;border-radius:8px;font-size:13px;font-weight:600;
+  .seg{display:inline-flex;background:var(--soft);border:1px solid var(--line);border-radius:9px;padding:2px;gap:2px}
+  .seg button{border:0;background:transparent;padding:6px 10px;border-radius:7px;font-size:12px;font-weight:600;
         color:var(--muted);cursor:pointer}
   .seg button.on{background:#fff;color:var(--brand);box-shadow:var(--shadow)}
   .chips{display:flex;flex-wrap:wrap;gap:7px}
@@ -109,9 +109,9 @@
   .ac .opt .sub{font-size:12px;color:var(--muted)}
   .ac .hint{padding:8px 12px;font-size:12px;color:var(--muted)}
 
-  .msgbox{background:#0f172a;color:#e2e8f0;border-radius:12px;padding:12px;white-space:pre-wrap;
-        font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;line-height:1.55;min-height:90px}
-  .hintline{font-size:12px;color:var(--muted);margin:8px 0 0}
+  .msgbox{background:#0f172a;color:#e2e8f0;border-radius:10px;padding:10px;white-space:pre-wrap;
+        font-family:ui-monospace,SFMono-Regular,Menlo,monospace;font-size:14px;line-height:1.5;min-height:66px}
+  .hintline{font-size:11px;color:var(--muted);margin:6px 0 0}
   .divider{height:1px;background:var(--line);margin:14px 0}
 
   /* toast */
@@ -133,7 +133,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
   .mapsGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}   /* lado a lado, compactos dentro de Call Info */
-  .mapBox{height:225px;background:#e2e8f0;border-radius:10px;overflow:hidden}
+  .mapBox{height:180px;background:#e2e8f0;border-radius:10px;overflow:hidden}
   #houseMapZone{height:520px}   /* el mapa de zona un poco más alto para ver las calles principales */
   .mapTitle{font-size:13px;font-weight:700;color:var(--muted);margin:0 0 6px}
   .leaflet-container{border-radius:12px;font:inherit}
@@ -209,32 +209,27 @@
       </div>
 
       <!-- Alert controls -->
-      <div style="display:flex;gap:8px;flex-wrap:wrap;margin:0 0 14px">
-        <button class="btn ghost sm" id="notifBtn">🔔 Enable desktop alerts</button>
+      <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px">
+        <button class="btn ghost sm" id="notifBtn">🔔 Alerts</button>
         <button class="btn ghost sm" id="muteBtn">🔊 Sound: on</button>
-        <button class="btn ghost sm" id="testAlert">▶︎ Test alert</button>
-        <button class="btn sm" id="clearAll" style="background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;font-weight:800">🧹 Clear all (reset)</button>
-        <button class="btn ghost sm" id="lookupCfg" style="margin-left:auto">🪪 Caller lookup: off</button>
+        <button class="btn ghost sm" id="testAlert">▶︎ Test</button>
+        <button class="btn sm" id="clearAll" style="margin-left:auto;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;font-weight:800">🧹 Clear all</button>
       </div>
 
       <!-- ===== LIVE TRANSCRIPT (arriba de "Where is the call from") ===== -->
-      <div class="field" style="border:1px solid var(--line);border-radius:12px;padding:12px 14px;background:var(--soft)">
+      <div class="field" style="border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--soft)">
         <div id="trBlock">
-          <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-bottom:8px">
-            <span class="badge" style="background:#dcfce7;color:#166534;font-weight:700">🎧 Live transcript · Auto — starts when you answer</span>
-            <button class="btn ghost sm" id="trBtn" style="font-size:12px;opacity:.7">start manually</button>
-            <span class="badge" style="background:#fef3c7;color:#b45309">beta</span>
-            <label style="font-size:12px;color:var(--muted);white-space:nowrap">Your name:</label>
-            <input type="text" id="agentName" placeholder="Hector" style="width:110px;padding:6px 8px;border:1px solid var(--line);border-radius:8px;font-size:13px" />
+          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
+            <span class="badge" style="background:#dcfce7;color:#166534;font-weight:700">🎧 Transcript · auto on answer</span>
+            <button class="btn ghost sm" id="trBtn" style="font-size:11px;opacity:.7">start manually</button>
             <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Clear</button>
           </div>
-          <div class="hintline" id="trStatus" style="margin:0 0 8px">Arms itself the <b>first time you answer a call</b> (Chrome asks to share this tab once). After that, <b>every call transcribes automatically</b> — no button per call.</div>
-          <div id="dgMeters" style="display:none;gap:14px;margin:0 0 8px;font-size:12px;color:var(--muted)">
+          <div class="hintline" id="trStatus" style="margin:0 0 6px">Arms on your <b>first answered call</b> (share the tab once). After that every call transcribes automatically.</div>
+          <div id="dgMeters" style="display:none;gap:14px;margin:0 0 6px;font-size:12px;color:var(--muted)">
             <div style="flex:1">🎤 You (mic)<div class="meterTrack"><div id="meterMic" class="meterFill"></div></div></div>
             <div style="flex:1">📞 Call (client)<div class="meterTrack"><div id="meterCall" class="meterFill"></div></div></div>
           </div>
-          <div id="trHUD" style="height:200px;min-height:100px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:12px;font-size:14px;line-height:1.55"></div>
-          <div class="hintline" style="margin-top:4px">Scroll up/down to review the conversation, and drag the corner ↘ to make it bigger.</div>
+          <div id="trHUD" style="height:170px;min-height:90px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:10px;font-size:14px;line-height:1.5"></div>
         </div>
       </div>
 
@@ -393,12 +388,10 @@
           <div id="agentAuto" style="display:none;font-size:11px;color:#1a7a3a;margin-top:4px;font-weight:600"></div>
         </div>
         <div class="msgbox" id="msg"></div>
-        <div class="row" style="margin-top:10px">
-          <button class="btn primary" id="copyMsg">📋 Copy message</button>
-          <button class="btn" id="waMsg" style="background:#25D366;color:#fff;border-color:#1da851">📲 Send to EL PASO CALL CENTER WP GROUP</button>
-          <button class="btn ghost" id="smsMsg">💬 Prefill SMS</button>
+        <div class="row" style="margin-top:8px">
+          <button class="btn primary" id="copyMsg">📋 Copy</button>
+          <button class="btn" id="waMsg" style="background:#25D366;color:#fff;border-color:#1da851">📲 Send to EPCC WP GR</button>
         </div>
-        <div style="font-size:11px;color:var(--muted);margin-top:6px">📲 sends the message straight to the <b>EL PASO CALL CENTER</b> WhatsApp group via the bot.</div>
       </div>
     </div>
 
@@ -406,7 +399,7 @@
     <div class="card">
       <h2>📞 RingCentral softphone</h2>
       <div class="body" style="padding:8px">
-        <div id="rcMount" style="width:100%;height:620px;background:#f1f5f9;border-radius:12px"></div>
+        <div id="rcMount" style="width:100%;height:540px;background:#f1f5f9;border-radius:12px"></div>
       </div>
     </div>
 
@@ -446,6 +439,9 @@ var state = {
   hotLead: false,
   addrCompact: '',           // "5513 Edinburg" para el mensaje
 };
+
+// Código de agente → nombre (para transcript y team status; sale del switch HS/GD/DV)
+var AGENT_NAMES = { HS:'Hector', GD:'Guillermo', DV:'Divine' };
 
 // Cajas geográficas para sesgar las sugerencias (lon1,lat1,lon2,lat2)
 var VIEWBOX = {
@@ -504,7 +500,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r55-2026-07-17';
+var APP_VERSION = 'r56-2026-07-17';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -992,9 +988,8 @@ function applyDetectedAgent(name, ext, source, lock){
   try{ localStorage.setItem('epwq_agent', code); }catch(_){}
   if(note){ note.style.display=''; note.textContent='✔ You are posting as '+code+' — '+(name || ('ext '+ext))+' (auto, from '+(source||'RingCentral')+')'; }
   buildMsg();
+  try{ reportStatus(); }catch(_){}   // el team status usa el agente elegido como nombre
 }
-// Respaldo confiable: deducir el agente del campo "Your name" (ya trae el nombre de la persona)
-function detectAgentFromName(){ var nm=($('agentName')&&$('agentName').value||'').trim(); if(nm) applyDetectedAgent(nm, '', 'your name', false); }
 function requestRcExtension(tries){
   if(window.__agentDetected) return;
   var frame=document.querySelector('#rc-widget-adapter-frame');
@@ -1074,20 +1069,6 @@ $('waMsg').addEventListener('click', function(){
     })
     .catch(function(){ toast('Could not reach the WhatsApp bot'); })
     .finally(function(){ btn.disabled=false; btn.textContent=old; });
-});
-
-/* Prellenar SMS en el widget de RingCentral (tú das enviar) */
-$('smsMsg').addEventListener('click', function(){
-  var phone = digits($('phone').value);
-  var text = $('msg').textContent;
-  var frame = document.querySelector('#rc-widget-adapter-frame');
-  if(!frame || !frame.contentWindow){
-    toast('Sign in to the RingCentral softphone first'); return;
-  }
-  frame.contentWindow.postMessage({
-    type:'rc-adapter-new-sms', phoneNumber: phone ? '+1'+phone : '', text:text, conversation:true
-  }, '*');
-  toast('SMS prefilled in RingCentral — review and send');
 });
 
 /* Contestar / rechazar / colgar la llamada desde aquí (sin ir al softphone) — RingCentral Embeddable control-call */
@@ -1482,7 +1463,7 @@ var myStatus = 'available', teamAlerted = false, teamVoiceUnlocked = false;
 function reportStatus(st){
   if(st) myStatus = st;
   var agent = (typeof agentLabel === 'function' ? agentLabel() : '') || '';
-  if(!agent || agent === 'Agente') return;   // sin nombre → no reporta (no ensucia el tablero)
+  if(!agent) return;   // sin agente elegido → no reporta (no ensucia el tablero)
   try{
     fetch(TEAM_URL, {
       method:'POST',
@@ -1550,7 +1531,6 @@ reportStatus('available');                 // reporta al abrir
 setInterval(function(){ reportStatus(); }, 20000);  // heartbeat: sigue "vivo"
 pollTeam(); setInterval(pollTeam, 5000);    // lee el tablero cada 5s
 setInterval(checkForUpdate, 180000);        // cada 3 min: avisa si hay versión nueva (no te quedas en caché vieja)
-if($('agentName')){ $('agentName').addEventListener('change', function(){ reportStatus(); }); }
 
 /* Ciudad aproximada por código de área (gratis, instantáneo). El área ≠ dónde vive, pero da contexto. */
 var AREACODE = {
@@ -1923,12 +1903,8 @@ var dgWS=null, dgCtx=null, dgProc=null, dgMicStream=null, dgTabStream=null;
 var dgArmed=false, dgConnected=false, callIsActive=false, dgSessionActive=false;
 var dgLevel=[0,0], dgMeterTimer=null, dgClientBuf='';
 
-// Nombre del agente (Héctor / Guillermo / Divine) — se guarda en este navegador
-var AGENT_NAME_KEY='epwq_agent_name';
-$('agentName').value = localStorage.getItem(AGENT_NAME_KEY) || '';
-detectAgentFromName();   // deduce HS/GD/DV del nombre al cargar (ej. "Hector" → HS)
-$('agentName').addEventListener('input', function(){ localStorage.setItem(AGENT_NAME_KEY, this.value.trim()); detectAgentFromName(); });
-function agentLabel(){ return ($('agentName').value||'').trim() || 'Agente'; }
+// Nombre del agente para transcript/team status — sale del switch HS/GD/DV (ya no de un campo de texto)
+function agentLabel(){ return (AGENT_NAMES||{})[state.agent] || ''; }
 
 $('trClear').addEventListener('click', function(){
   var el=$('trHUD'); el.innerHTML=''; el.dataset.full=''; el.dataset.last='';
@@ -2070,7 +2046,7 @@ function dgAppend(ch, text){
   var cliente = (ch===1);
   var line=document.createElement('div');
   line.style.margin='3px 0';
-  var label = cliente ? '🗣️ Cliente' : ('🧑‍💼 '+agentLabel());
+  var label = cliente ? '🗣️ Cliente' : ('🧑‍💼 '+(agentLabel()||'Agent'));
   line.innerHTML='<b style="color:'+(cliente?'#86efac':'#93c5fd')+'">'+esc(label)+':</b> '+esc(text);
   el.appendChild(line);
   el.dataset.full=((el.dataset.full||'')+' '+text).slice(-8000);
