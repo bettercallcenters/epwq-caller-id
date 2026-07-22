@@ -174,6 +174,12 @@
   <div class="who">Users: Guillermo · Divine · Hector<br><span id="rcStatus">RingCentral: sign in to the softphone ↘</span></div>
 </header>
 
+<!-- Alerta: bot de WhatsApp desconectado (necesita re-escaneo) -->
+<a id="waDownBar" href="#" target="_blank" rel="noopener" style="display:none;align-items:center;gap:10px;justify-content:center;background:#dc2626;color:#fff;font-weight:800;padding:11px 16px;text-decoration:none;font-size:14.5px;box-shadow:0 2px 8px rgba(220,38,38,.35)">
+  <span style="font-size:18px">⚠️</span>
+  <span id="waDownTxt">WhatsApp bot desconectado — el grupo no recibe citas/reportes. Toca aquí para re-escanear el QR ↗</span>
+</a>
+
 <div class="wrap">
   <!-- ================= COLUMNA IZQUIERDA: CALL INFO ================= -->
   <div class="card">
@@ -501,7 +507,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r59-2026-07-21';
+var APP_VERSION = 'r60-2026-07-22';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1550,6 +1556,31 @@ reportStatus('available');                 // reporta al abrir
 setInterval(function(){ reportStatus(); }, 20000);  // heartbeat: sigue "vivo"
 pollTeam(); setInterval(pollTeam, 5000);    // lee el tablero cada 5s
 setInterval(checkForUpdate, 180000);        // cada 3 min: avisa si hay versión nueva (no te quedas en caché vieja)
+
+/* Salud del bot de WhatsApp: si se cae/desloguea, muestra la barra roja con el link de re-escaneo.
+   Los agentes tienen la app abierta → se enteran al instante en vez de horas después. */
+function pollWaHealth(){
+  var bar = document.getElementById('waDownBar'); if(!bar) return;
+  fetch(waBase()+'/wa/status', { cache:'no-store' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var down = !d || !d.connected;
+      if(down){
+        var txt = document.getElementById('waDownTxt');
+        if(txt && d && d.lastDisconnect && d.lastDisconnect.reason){
+          txt.textContent = (d.needsScan
+            ? 'WhatsApp bot DESLOGUEADO ('+d.lastDisconnect.reason+') — el grupo no recibe citas/reportes. Toca para re-escanear el QR ↗'
+            : 'WhatsApp bot reconectando ('+d.lastDisconnect.reason+')… si sigue en rojo, toca para re-escanear ↗');
+        }
+        bar.href = waBase()+'/wa';
+        bar.style.display = 'flex';
+      } else {
+        bar.style.display = 'none';
+      }
+    })
+    .catch(function(){ /* red caída: no marcamos como desconectado para no dar falsos positivos */ });
+}
+pollWaHealth(); setInterval(pollWaHealth, 20000);   // revisa la salud del bot cada 20s
 
 /* Ciudad aproximada por código de área (gratis, instantáneo). El área ≠ dónde vive, pero da contexto. */
 var AREACODE = {
