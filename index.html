@@ -518,7 +518,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r35-2026-07-23';
+var APP_VERSION = 'r36-2026-07-23';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1580,6 +1580,7 @@ window.addEventListener('message', function(e){
   // Eventos de llamada — con máquina de estado robusta (evita "INCOMING CALL" fantasma tras colgar)
   if(RC_CALL_EVENTS.indexOf(d.type) >= 0){
     try{ console.log('RC event', d.type, d); }catch(_){}
+    window.__rcWidgetSeen = Date.now();   // el softphone SÍ está reportando → manda él (el sondeo se hace a un lado)
     var call = rcCallOf(d); if(!call) return;
     if(call.direction && call.direction !== 'Inbound') return;   // ignora salientes
     var id = rcCallId(call);
@@ -1681,43 +1682,65 @@ function renderTeam(rows){
 }
 
 /* ===== HUD en vivo desde RingCentral (backend rc-presence) — quién está en llamada, con quién ===== */
-var RC_PRESENCE_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/rc-presence';
-function rcIsOnCall(ts){ return ts==='CallConnected' || ts==='OnHold' || ts==='ParkedCall'; }
+/* Live team + caller ID straight from RingCentral — NO softphone login needed.
+   The dispatch backend is already authenticated to RC (JWT); rc-caller proxies its
+   per-extension presence: [{ name, ext, state:'idle'|'incoming'|'active', who, sessionId }]. */
+var RC_CALLER_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/rc-caller';
+var AGENT_EXT = { HS:'101', GD:'124', DV:'127' };   // agent code → RingCentral extension
+
 function renderTeamRC(d){
   var box = $('teamList'); if(!box) return;
   if(!d || !d.ok){
-    box.innerHTML = '<span style="color:var(--muted);font-size:13px">'
-      + (d && d.reason==='not_configured' ? 'RingCentral not connected yet.' : 'Team status unavailable — retrying…') + '</span>';
+    box.innerHTML = '<span style="color:var(--muted);font-size:13px">Team status unavailable — retrying…</span>';
     teamAlerted = false; return;
   }
   var agents = d.agents || [];
   if(!agents.length){ box.innerHTML = '<span style="color:var(--muted);font-size:13px">No agents found.</span>'; teamAlerted=false; return; }
-  var me = (typeof agentLabel === 'function' ? agentLabel() : '');
+  var meExt = AGENT_EXT[state.agent] || '';
   box.innerHTML = agents.map(function(a){
-    var ts = a.telephonyStatus || 'NoCall';
-    var oncall = rcIsOnCall(ts), ring = (ts==='Ringing');
+    var st = String(a.state||'idle');
+    var oncall = (st==='active'), ring = (st==='incoming');
     var dot = oncall ? '🔴' : (ring ? '🟡' : '🟢');
     var lbl = oncall ? 'On call' : (ring ? 'Ringing' : 'Available');
     var withWho = '';
-    var c = (a.calls && a.calls[0]) || null;
-    if((oncall||ring) && c && c.peer){
-      var who = (c.peerName ? esc(c.peerName)+' · ' : '') + esc(prettyPhone(c.peer));
-      var arrow = c.direction==='Outbound' ? '→ to' : '← from';
-      withWho = ' <span style="color:var(--muted)">'+arrow+' <b style="color:var(--ink);font-weight:700">'+who+'</b></span>';
+    if((oncall||ring) && a.who){
+      withWho = ' <span style="color:var(--muted)">with <b style="color:var(--ink);font-weight:700">'+esc(prettyPhone(a.who))+'</b></span>';
     }
-    var mine = (a.name && me && a.name.toLowerCase().indexOf(me.toLowerCase())>=0) ? ';outline:2px solid var(--accent,#2563eb);outline-offset:1px' : '';
+    var mine = (meExt && String(a.ext)===String(meExt)) ? ';outline:2px solid var(--accent,#2563eb);outline-offset:1px' : '';
     return '<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px'+mine+'">'+dot+' <b>'+esc(a.name||a.ext||'?')+'</b> · '+lbl+withWho+'</span>';
   }).join('');
-  // Alerta: 2+ agentes y TODOS en llamada
-  var oncallCount = agents.filter(function(a){ return rcIsOnCall(a.telephonyStatus); }).length;
+  var oncallCount = agents.filter(function(a){ return a.state==='active'; }).length;
   var allBusy = agents.length>=2 && oncallCount===agents.length;
   if(allBusy && !teamAlerted){ teamAlerted=true; teamAllBusyAlert(); }
   if(!allBusy) teamAlerted=false;
 }
+
+/* Caller ID with NO softphone: watch YOUR extension's presence and drive the same
+   incoming-call flow (banner, alert, lookups, reset). If the embedded softphone IS
+   reporting, it wins — this only fills in when you're not signed into it. */
+var rcPollKey = '';
+function rcCallerDetect(d){
+  if(!d || !d.ok || !Array.isArray(d.agents)) return;
+  if(window.__rcWidgetSeen && (Date.now() - window.__rcWidgetSeen) < 30000) return;   // el softphone manda
+  var ext = AGENT_EXT[state.agent]; if(!ext) return;   // sin código de agente no sabemos tu extensión
+  var me = d.agents.filter(function(a){ return String(a.ext)===String(ext); })[0];
+  if(!me) return;
+  var key = me.state+'|'+(me.who||'')+'|'+(me.sessionId||'');
+  if(key === rcPollKey) return;                        // sin cambios → no dispares nada
+  rcPollKey = key;
+  if((me.state==='incoming' || me.state==='active') && me.who){
+    var callKey = me.sessionId || me.who;
+    if(callKey && callKey !== window.__resetCallKey){ window.__resetCallKey = callKey; resetForNewCall(); }
+    window.__callActive = true;
+    onIncoming(me.who, me.state==='active', {});
+  } else if(me.state==='idle'){
+    callEnded();
+  }
+}
 function pollTeam(){
   try{
-    fetch(RC_PRESENCE_URL).then(function(r){ return r.json(); })
-      .then(function(d){ renderTeamRC(d); })
+    fetch(RC_CALLER_URL).then(function(r){ return r.json(); })
+      .then(function(d){ renderTeamRC(d); rcCallerDetect(d); })
       .catch(function(){});
   }catch(_){}
 }
@@ -1730,7 +1753,7 @@ document.addEventListener('click', function(){
 
 reportStatus('available');                 // reporta al abrir
 setInterval(function(){ reportStatus(); }, 20000);  // heartbeat: sigue "vivo"
-pollTeam(); setInterval(pollTeam, 5000);    // lee el tablero cada 5s
+pollTeam(); setInterval(pollTeam, 2500);   // live team + caller ID (no softphone needed)
 setInterval(checkForUpdate, 180000);        // cada 3 min: avisa si hay versión nueva (no te quedas en caché vieja)
 
 /* Salud del bot de WhatsApp: si se cae/desloguea, muestra la barra roja con el link de re-escaneo.
