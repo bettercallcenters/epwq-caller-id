@@ -416,7 +416,7 @@
       <div class="body" style="padding:12px 14px">
         <div id="teamList" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--muted);font-size:13px">Connecting…</span></div>
         <div id="teamAlert" style="display:none;margin-top:10px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 12px;font-weight:800;font-size:15px">🚨 TODOS EN LLAMADA — favor de contestar</div>
-        <div class="hintline" style="margin-top:8px">Each agent's app reports its own status. Shows only agents with the app open. Voice + alert fire when everyone online is on a call.</div>
+        <div class="hintline" style="margin-top:8px">Live from RingCentral — shows who's on a call and with whom (incoming ← / outgoing →). Voice alert when everyone is on a call.</div>
       </div>
     </div>
   </div>
@@ -507,7 +507,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r60-2026-07-22';
+var APP_VERSION = 'r32-2026-07-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1537,11 +1537,44 @@ function renderTeam(rows){
   if(!allBusy) teamAlerted = false;
 }
 
+/* ===== HUD en vivo desde RingCentral (backend rc-presence) — quién está en llamada, con quién ===== */
+var RC_PRESENCE_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/rc-presence';
+function rcIsOnCall(ts){ return ts==='CallConnected' || ts==='OnHold' || ts==='ParkedCall'; }
+function renderTeamRC(d){
+  var box = $('teamList'); if(!box) return;
+  if(!d || !d.ok){
+    box.innerHTML = '<span style="color:var(--muted);font-size:13px">'
+      + (d && d.reason==='not_configured' ? 'RingCentral not connected yet.' : 'Team status unavailable — retrying…') + '</span>';
+    teamAlerted = false; return;
+  }
+  var agents = d.agents || [];
+  if(!agents.length){ box.innerHTML = '<span style="color:var(--muted);font-size:13px">No agents found.</span>'; teamAlerted=false; return; }
+  var me = (typeof agentLabel === 'function' ? agentLabel() : '');
+  box.innerHTML = agents.map(function(a){
+    var ts = a.telephonyStatus || 'NoCall';
+    var oncall = rcIsOnCall(ts), ring = (ts==='Ringing');
+    var dot = oncall ? '🔴' : (ring ? '🟡' : '🟢');
+    var lbl = oncall ? 'On call' : (ring ? 'Ringing' : 'Available');
+    var withWho = '';
+    var c = (a.calls && a.calls[0]) || null;
+    if((oncall||ring) && c && c.peer){
+      var who = (c.peerName ? esc(c.peerName)+' · ' : '') + esc(prettyPhone(c.peer));
+      var arrow = c.direction==='Outbound' ? '→ to' : '← from';
+      withWho = ' <span style="color:var(--muted)">'+arrow+' <b style="color:var(--ink);font-weight:700">'+who+'</b></span>';
+    }
+    var mine = (a.name && me && a.name.toLowerCase().indexOf(me.toLowerCase())>=0) ? ';outline:2px solid var(--accent,#2563eb);outline-offset:1px' : '';
+    return '<span style="display:inline-flex;align-items:center;gap:6px;background:#fff;border:1px solid var(--line);border-radius:999px;padding:5px 12px;font-size:13px'+mine+'">'+dot+' <b>'+esc(a.name||a.ext||'?')+'</b> · '+lbl+withWho+'</span>';
+  }).join('');
+  // Alerta: 2+ agentes y TODOS en llamada
+  var oncallCount = agents.filter(function(a){ return rcIsOnCall(a.telephonyStatus); }).length;
+  var allBusy = agents.length>=2 && oncallCount===agents.length;
+  if(allBusy && !teamAlerted){ teamAlerted=true; teamAllBusyAlert(); }
+  if(!allBusy) teamAlerted=false;
+}
 function pollTeam(){
   try{
-    fetch(TEAM_URL+'?select=agent,status,peer,updated_at', { headers:{ 'apikey':TEAM_KEY, 'Authorization':'Bearer '+TEAM_KEY } })
-      .then(function(r){ return r.json(); })
-      .then(function(rows){ renderTeam(rows); })
+    fetch(RC_PRESENCE_URL).then(function(r){ return r.json(); })
+      .then(function(d){ renderTeamRC(d); })
       .catch(function(){});
   }catch(_){}
 }
