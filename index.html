@@ -399,6 +399,9 @@
           <button class="btn" id="waMsg" style="background:#25D366;color:#fff;border-color:#1da851">📲 Send to EPCC WP GR</button>
           <button class="btn" id="hangMsg" title="Hang up the call" style="flex:0 0 auto;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;font-weight:700">📵 Hang up</button>
         </div>
+        <!-- No agendó pero quiere que le hablen luego → cola de Setter Callbacks del Dispatcher -->
+        <button class="btn wide" id="followupBtn" title="El cliente no agendó pero quiere que le hablen después → se agenda un callback en el Dispatcher (Setter Callbacks)" style="margin-top:6px;background:#f59e0b;color:#fff;border-color:#d97706;font-weight:700">🔁 No booking — Follow-up (schedule callback)</button>
+        <div id="followupNote" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:6px 10px"></div>
       </div>
     </div>
 
@@ -507,7 +510,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r32-2026-07-15';
+var APP_VERSION = 'r33-2026-07-23';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1128,6 +1131,32 @@ if($('answerBtn')) $('answerBtn').addEventListener('click', function(){
 if($('rejectBtn')) $('rejectBtn').addEventListener('click', function(){ rcControl('reject'); });
 if($('hangupBtn')) $('hangupBtn').addEventListener('click', function(){ rcControl('hangup'); });
 if($('hangMsg')) $('hangMsg').addEventListener('click', function(){ rcControl('hangup'); });
+
+// FOLLOW-UP: el cliente no agendó pero quiere que le hablen luego → crea un callback en el Dispatcher (Setter Callbacks)
+var ADD_CALLBACK_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/add-callback';
+if($('followupBtn')) $('followupBtn').addEventListener('click', function(){
+  var phone = digits($('phone').value||'');
+  if(phone.length!==10){ toast('No hay número del cliente para el follow-up'); return; }
+  if(!state.agent){ toast('Elige tu AGENTE (HS / GD / DV) primero'); return; }
+  var rcName = (window.__lastFrom && window.__lastFrom.name && !/^\+?\d[\d\s()+-]*$/.test(window.__lastFrom.name)) ? window.__lastFrom.name : '';
+  var name = rcName || ($('owner') ? $('owner').value.trim() : '');
+  var said = ($('notes') && $('notes').value.trim()) || 'Cliente quiere que le hablen después para agendar';
+  var setter = agentLabel();   // Hector / Guillermo / Divine
+  var note=$('followupNote'), btn=this, old=btn.textContent;
+  btn.disabled=true; btn.textContent='Enviando al Dispatcher…';
+  fetch(ADD_CALLBACK_URL, {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ name:name, phone:phone, lang:state.lang, setter:setter, said:said, bucket:'today' })
+  }).then(function(r){ return r.json().catch(function(){ return {ok:false,error:'bad response'}; }); })
+    .then(function(d){
+      if(note){ note.style.display=''; }
+      if(d && d.ok && d.dup){ if(note) note.textContent='✔ Ya estaba en Setter Callbacks — '+((d.callback&&d.callback.setter)||setter)+' le da seguimiento'; toast('Ya estaba en la cola ✔'); }
+      else if(d && d.ok){ if(note) note.textContent='✔ Agregado a Setter Callbacks — '+setter+' le dará seguimiento ('+prettyPhone(phone)+')'; toast('✔ Agregado a Setter Callbacks'); }
+      else { if(note){ note.style.color='#b91c1c'; note.style.background='#fee2e2'; note.style.borderColor='#fca5a5'; note.textContent='No se pudo agregar: '+((d&&d.error)||'error'); } toast('Error al agregar el callback'); }
+    })
+    .catch(function(){ if(note){ note.style.display=''; note.style.color='#b91c1c'; note.style.background='#fee2e2'; note.style.borderColor='#fca5a5'; note.textContent='No se pudo conectar al Dispatcher.'; } toast('No se pudo conectar'); })
+    .finally(function(){ btn.disabled=false; btn.textContent=old; });
+});
 
 // Mute / Unmute del micrófono de la llamada (RingCentral control-call)
 var callMuted=false;
