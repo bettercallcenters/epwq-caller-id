@@ -399,6 +399,8 @@
           <button class="btn" id="waMsg" style="background:#25D366;color:#fff;border-color:#1da851">📲 Send to EPCC WP GR</button>
           <button class="btn" id="hangMsg" title="Hang up the call" style="flex:0 0 auto;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;font-weight:700">📵 Hang up</button>
         </div>
+        <!-- Bloqueo: no se puede copiar/enviar sin TELÉFONO ni IDIOMA (por eso en el grupo pedían "Phone number") -->
+        <div id="reqWarn" style="display:none;margin-top:7px;font-size:13px;font-weight:700;color:#b91c1c;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:8px 10px;line-height:1.5"></div>
         <!-- No agendó pero quiere que le hablen luego → cola de Setter Callbacks del Dispatcher -->
         <button class="btn wide" id="followupBtn" title="El cliente no agendó pero quiere que le hablen después → se agenda un callback en el Dispatcher (Setter Callbacks)" style="margin-top:6px;background:#f59e0b;color:#fff;border-color:#d97706;font-weight:700">🔁 No booking — Follow-up (schedule callback)</button>
         <div id="followupNote" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:6px 10px"></div>
@@ -510,7 +512,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r33-2026-07-23';
+var APP_VERSION = 'r34-2026-07-23';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1089,7 +1091,48 @@ function copy(text){
     try{ document.execCommand('copy'); }catch(e){} document.body.removeChild(ta); res();
   });
 }
+/* ── OBLIGATORIO antes de copiar/enviar: TELÉFONO + IDIOMA ──────────────────────────────
+   Sin esto las citas salían al grupo sin número y tenían que pedirlo ("Phone number").
+   Las notas y demás siguen siendo opcionales. */
+function missingRequired(){
+  var miss=[];
+  if(digits($('phone').value||'').length!==10) miss.push('phone');
+  if(!state.lang) miss.push('lang');
+  return miss;
+}
+function markMissing(miss){
+  var needPhone=miss.indexOf('phone')>=0, needLang=miss.indexOf('lang')>=0;
+  var ph=$('phone'), lg=$('langSeg'), w=$('reqWarn');
+  if(ph){ ph.style.borderColor = needPhone?'#ef4444':''; ph.style.boxShadow = needPhone?'0 0 0 3px rgba(239,68,68,.25)':''; }
+  if(lg){ lg.style.borderColor = needLang?'#ef4444':''; lg.style.boxShadow = needLang?'0 0 0 3px rgba(239,68,68,.25)':''; }
+  if(!w) return;
+  if(!miss.length){ w.style.display='none'; return; }
+  var lines=[];
+  if(needPhone) lines.push('📞 Falta el <u>NÚMERO de teléfono</u> — ponlo arriba.');
+  if(needLang)  lines.push('🗣️ Falta el <u>IDIOMA</u> — elige Spanish / English / Bilingual.');
+  w.innerHTML='⚠️ No se puede enviar todavía:<br>'+lines.join('<br>');
+  w.style.display='';
+}
+// true = se puede continuar; false = falta algo (ya avisó y resaltó en rojo)
+function requireBeforeSend(){
+  var miss=missingRequired();
+  markMissing(miss);
+  if(!miss.length) return true;
+  var both = miss.length>1;
+  toast(both ? '⚠️ Falta el número y el idioma' : (miss[0]==='phone' ? '⚠️ Falta el número de teléfono' : '⚠️ Falta el idioma'));
+  try{
+    var el = (miss.indexOf('phone')>=0) ? $('phone') : $('langSeg');
+    if(el){ el.scrollIntoView({behavior:'smooth', block:'center'}); if(el.focus && miss.indexOf('phone')>=0) el.focus(); }
+  }catch(e){}
+  return false;
+}
+// Al corregir, quita el rojo/aviso en vivo (solo si ya se había avisado)
+function recheckRequired(){ var w=$('reqWarn'); if(w && w.style.display!=='none') markMissing(missingRequired()); }
+if($('phone'))   $('phone').addEventListener('input', recheckRequired);
+if($('langSeg')) $('langSeg').addEventListener('click', function(){ setTimeout(recheckRequired, 0); });
+
 $('copyMsg').addEventListener('click', function(){
+  if(!requireBeforeSend()) return;
   copy($('msg').textContent).then(function(){ toast('Message copied ✔'); });
 });
 
@@ -1098,6 +1141,7 @@ function waBase(){ return (callerLookupUrl() || DEFAULT_LOOKUP_URL); }
 $('waMsg').addEventListener('click', function(){
   var text = $('msg').textContent.trim();
   if(!text){ toast('Nothing to send yet'); return; }
+  if(!requireBeforeSend()) return;                    // sin teléfono o idioma NO se envía al grupo
   if(!state.agent){ toast('Pick your AGENT code first (HS / GD / DV)'); return; }
   var btn=this, old=btn.textContent;
   btn.disabled=true; btn.textContent='Sending…';
