@@ -327,6 +327,11 @@
           <div id="ownerCopied" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:var(--ok);background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px">✓ Owner name copied</div>
           <div id="ownerDetected" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px"></div>
         </div>
+        <!-- Mismo teléfono que arriba (Call Info) — los dos se copian entre sí -->
+        <div class="field">
+          <label>Phone number</label>
+          <input type="text" id="phone2" placeholder="(832) 865-8324" inputmode="tel" autocomplete="off" />
+        </div>
         <div class="field">
           <label>Day</label>
           <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap">
@@ -355,6 +360,7 @@
               <button data-lang="English">English</button>
               <button data-lang="Bilingual">Bilingual</button>
             </div>
+            <div id="langAuto" style="display:none;font-size:11px;color:#1a7a3a;margin-top:4px;font-weight:600"></div>
           </div>
           <div style="min-width:0">
             <label>Role</label>
@@ -402,7 +408,7 @@
         <!-- Bloqueo: no se puede copiar/enviar sin TELÉFONO ni IDIOMA (por eso en el grupo pedían "Phone number") -->
         <div id="reqWarn" style="display:none;margin-top:7px;font-size:13px;font-weight:700;color:#b91c1c;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:8px 10px;line-height:1.5"></div>
         <!-- No agendó pero quiere que le hablen luego → cola de Setter Callbacks del Dispatcher -->
-        <button class="btn wide" id="followupBtn" title="El cliente no agendó pero quiere que le hablen después → se agenda un callback en el Dispatcher (Setter Callbacks)" style="margin-top:6px;background:#f59e0b;color:#fff;border-color:#d97706;font-weight:700">🔁 No booking — Follow-up (schedule callback)</button>
+        <button class="btn wide" id="followupBtn" title="Customer did not book but wants a call back later → schedules a callback in the Dispatcher (Setter Callbacks)" style="margin-top:6px;background:#f59e0b;color:#fff;border-color:#d97706;font-weight:700">🔁 No booking — Follow-up (schedule callback)</button>
         <div id="followupNote" style="display:none;margin-top:6px;font-size:13px;font-weight:600;color:#92400e;background:#fef3c7;border:1px solid #fcd34d;border-radius:8px;padding:6px 10px"></div>
       </div>
     </div>
@@ -512,7 +518,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r34-2026-07-23';
+var APP_VERSION = 'r35-2026-07-23';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1002,7 +1008,35 @@ function segMark(segId, attr, val){
   var seg=$(segId); if(!seg) return;
   [].forEach.call(seg.querySelectorAll('button'), function(x){ x.classList.toggle('on', x.dataset[attr]===val); });
 }
-$('langSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.lang=b.dataset.lang; segMark('langSeg','lang',state.lang); buildMsg(); });
+$('langSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.lang=b.dataset.lang; segMark('langSeg','lang',state.lang); langManual=true; var n=$('langAuto'); if(n) n.style.display='none'; buildMsg(); });
+
+/* ── Auto language: the caller's language sets Spanish/English by itself ──────────────
+   Deepgram runs with language=multi, so the CLIENT channel tells us what they speak.
+   The agent can always override — a manual pick wins and stops auto-detection. */
+var langManual=false;
+function detectLangFromText(t){
+  var s=' '+String(t||'').toLowerCase()+' ';
+  var es=(s.match(/\b(que|qué|para|pero|como|cómo|está|estoy|gracias|hola|bueno|sí|señor|señora|agua|casa|día|días|tarde|noche|usted|ustedes|porque|cuando|dónde|muy|más|aquí|ahorita|mande|dígame|habla|tiene|puede|quiero|necesito|nosotros|ahora|entonces)\b/g)||[]).length;
+  var en=(s.match(/\b(the|and|you|your|are|for|with|this|that|have|what|when|where|thank|thanks|hello|water|house|morning|afternoon|evening|please|can|would|need|want|about|there|here|okay|right|sure|actually)\b/g)||[]).length;
+  if(es>=2 && es>en) return 'Spanish';
+  if(en>=2 && en>es) return 'English';
+  return '';
+}
+function autoSetLang(code){
+  if(!code || langManual || state.lang===code) return;
+  state.lang=code; segMark('langSeg','lang',code); buildMsg(); try{ recheckRequired(); }catch(e){}
+  var n=$('langAuto'); if(n){ n.textContent='🌐 Auto-detected from the call: '+code+' — tap to change'; n.style.display=''; }
+}
+// Takes Deepgram's detected language when it sends one, else falls back to the words themselves
+function langFromDgMessage(d, text){
+  try{
+    var alt=(d.channel && d.channel.alternatives && d.channel.alternatives[0]) || {};
+    var lc=String((alt.languages && alt.languages[0]) || d.channel.detected_language || (alt.words && alt.words[0] && alt.words[0].language) || '').toLowerCase();
+    if(lc.indexOf('es')===0) return 'Spanish';
+    if(lc.indexOf('en')===0) return 'English';
+  }catch(e){}
+  return detectLangFromText(text);
+}
 $('roleSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.role=b.dataset.role; segMark('roleSeg','role',state.role); buildMsg(); });
 $('waterSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.water=(state.water===b.dataset.water)?'':b.dataset.water; segMark('waterSeg','water',state.water); buildMsg(); });
 $('agentSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.agent=b.dataset.agent; segMark('agentSeg','agent',state.agent); try{ localStorage.setItem('epwq_agent', state.agent); }catch(_){}; buildMsg(); });
@@ -1102,15 +1136,18 @@ function missingRequired(){
 }
 function markMissing(miss){
   var needPhone=miss.indexOf('phone')>=0, needLang=miss.indexOf('lang')>=0;
-  var ph=$('phone'), lg=$('langSeg'), w=$('reqWarn');
-  if(ph){ ph.style.borderColor = needPhone?'#ef4444':''; ph.style.boxShadow = needPhone?'0 0 0 3px rgba(239,68,68,.25)':''; }
+  var lg=$('langSeg'), w=$('reqWarn');
+  [$('phone'), $('phone2')].forEach(function(ph){   // el teléfono está en 2 lugares → marca los dos
+    if(!ph) return;
+    ph.style.borderColor = needPhone?'#ef4444':''; ph.style.boxShadow = needPhone?'0 0 0 3px rgba(239,68,68,.25)':'';
+  });
   if(lg){ lg.style.borderColor = needLang?'#ef4444':''; lg.style.boxShadow = needLang?'0 0 0 3px rgba(239,68,68,.25)':''; }
   if(!w) return;
   if(!miss.length){ w.style.display='none'; return; }
   var lines=[];
-  if(needPhone) lines.push('📞 Falta el <u>NÚMERO de teléfono</u> — ponlo arriba.');
-  if(needLang)  lines.push('🗣️ Falta el <u>IDIOMA</u> — elige Spanish / English / Bilingual.');
-  w.innerHTML='⚠️ No se puede enviar todavía:<br>'+lines.join('<br>');
+  if(needPhone) lines.push('📞 Missing the <u>PHONE NUMBER</u> — add it above.');
+  if(needLang)  lines.push('🗣️ Missing the <u>LANGUAGE</u> — pick Spanish / English / Bilingual.');
+  w.innerHTML='⚠️ Can\'t send yet:<br>'+lines.join('<br>');
   w.style.display='';
 }
 // true = se puede continuar; false = falta algo (ya avisó y resaltó en rojo)
@@ -1119,7 +1156,7 @@ function requireBeforeSend(){
   markMissing(miss);
   if(!miss.length) return true;
   var both = miss.length>1;
-  toast(both ? '⚠️ Falta el número y el idioma' : (miss[0]==='phone' ? '⚠️ Falta el número de teléfono' : '⚠️ Falta el idioma'));
+  toast(both ? '⚠️ Missing phone number and language' : (miss[0]==='phone' ? '⚠️ Missing the phone number' : '⚠️ Missing the language'));
   try{
     var el = (miss.indexOf('phone')>=0) ? $('phone') : $('langSeg');
     if(el){ el.scrollIntoView({behavior:'smooth', block:'center'}); if(el.focus && miss.indexOf('phone')>=0) el.focus(); }
@@ -1128,7 +1165,15 @@ function requireBeforeSend(){
 }
 // Al corregir, quita el rojo/aviso en vivo (solo si ya se había avisado)
 function recheckRequired(){ var w=$('reqWarn'); if(w && w.style.display!=='none') markMissing(missingRequired()); }
-if($('phone'))   $('phone').addEventListener('input', recheckRequired);
+
+/* The phone lives in TWO places (Call Info + Appointment Details) — always kept identical */
+function setPhoneValue(v){ var a=$('phone'), b=$('phone2'); if(a) a.value=v; if(b) b.value=v; }
+function wirePhoneSync(fromId, toId){
+  var f=$(fromId); if(!f) return;
+  f.addEventListener('input', function(){ var t=$(toId); if(t) t.value=f.value; buildMsg(); recheckRequired(); });
+}
+wirePhoneSync('phone','phone2');
+wirePhoneSync('phone2','phone');
 if($('langSeg')) $('langSeg').addEventListener('click', function(){ setTimeout(recheckRequired, 0); });
 
 $('copyMsg').addEventListener('click', function(){
@@ -1180,25 +1225,25 @@ if($('hangMsg')) $('hangMsg').addEventListener('click', function(){ rcControl('h
 var ADD_CALLBACK_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/add-callback';
 if($('followupBtn')) $('followupBtn').addEventListener('click', function(){
   var phone = digits($('phone').value||'');
-  if(phone.length!==10){ toast('No hay número del cliente para el follow-up'); return; }
-  if(!state.agent){ toast('Elige tu AGENTE (HS / GD / DV) primero'); return; }
+  if(phone.length!==10){ toast('No customer number for the follow-up'); return; }
+  if(!state.agent){ toast('Pick your AGENT code first (HS / GD / DV)'); return; }
   var rcName = (window.__lastFrom && window.__lastFrom.name && !/^\+?\d[\d\s()+-]*$/.test(window.__lastFrom.name)) ? window.__lastFrom.name : '';
   var name = rcName || ($('owner') ? $('owner').value.trim() : '');
-  var said = ($('notes') && $('notes').value.trim()) || 'Cliente quiere que le hablen después para agendar';
+  var said = ($('notes') && $('notes').value.trim()) || 'Customer wants a call back later to schedule';
   var setter = agentLabel();   // Hector / Guillermo / Divine
   var note=$('followupNote'), btn=this, old=btn.textContent;
-  btn.disabled=true; btn.textContent='Enviando al Dispatcher…';
+  btn.disabled=true; btn.textContent='Sending to Dispatcher…';
   fetch(ADD_CALLBACK_URL, {
     method:'POST', headers:{'Content-Type':'application/json'},
     body: JSON.stringify({ name:name, phone:phone, lang:state.lang, setter:setter, said:said, bucket:'today' })
   }).then(function(r){ return r.json().catch(function(){ return {ok:false,error:'bad response'}; }); })
     .then(function(d){
       if(note){ note.style.display=''; }
-      if(d && d.ok && d.dup){ if(note) note.textContent='✔ Ya estaba en Setter Callbacks — '+((d.callback&&d.callback.setter)||setter)+' le da seguimiento'; toast('Ya estaba en la cola ✔'); }
-      else if(d && d.ok){ if(note) note.textContent='✔ Agregado a Setter Callbacks — '+setter+' le dará seguimiento ('+prettyPhone(phone)+')'; toast('✔ Agregado a Setter Callbacks'); }
-      else { if(note){ note.style.color='#b91c1c'; note.style.background='#fee2e2'; note.style.borderColor='#fca5a5'; note.textContent='No se pudo agregar: '+((d&&d.error)||'error'); } toast('Error al agregar el callback'); }
+      if(d && d.ok && d.dup){ if(note) note.textContent='✔ Already in Setter Callbacks — '+((d.callback&&d.callback.setter)||setter)+' is following up'; toast('Already in the queue ✔'); }
+      else if(d && d.ok){ if(note) note.textContent='✔ Added to Setter Callbacks — '+setter+' will follow up ('+prettyPhone(phone)+')'; toast('✔ Added to Setter Callbacks'); }
+      else { if(note){ note.style.color='#b91c1c'; note.style.background='#fee2e2'; note.style.borderColor='#fca5a5'; note.textContent='Could not add it: '+((d&&d.error)||'error'); } toast('Error adding the callback'); }
     })
-    .catch(function(){ if(note){ note.style.display=''; note.style.color='#b91c1c'; note.style.background='#fee2e2'; note.style.borderColor='#fca5a5'; note.textContent='No se pudo conectar al Dispatcher.'; } toast('No se pudo conectar'); })
+    .catch(function(){ if(note){ note.style.display=''; note.style.color='#b91c1c'; note.style.background='#fee2e2'; note.style.borderColor='#fca5a5'; note.textContent='Could not reach the Dispatcher.'; } toast('Could not connect'); })
     .finally(function(){ btn.disabled=false; btn.textContent=old; });
 });
 
@@ -1742,7 +1787,7 @@ function onIncoming(num, answered, from){
   if($('hangupBtn')) $('hangupBtn').style.display = answered ? '' : 'none';
   if($('muteCallBtn')) $('muteCallBtn').style.display = answered ? '' : 'none';   // mute solo con llamada contestada
   if(!answered) setCallMuted(false);                                              // llamada nueva/sonando → parte sin mute
-  if(num){ $('phone').value = pretty; buildMsg(); }
+  if(num){ setPhoneValue(pretty); buildMsg(); }
 
   // AUTO: busca la info del cliente en el bot (una vez por número) y la muestra dentro de la app
   if(num){ var dnum=digits(num); if(dnum.length===10 && dnum!==lastLookedUp && callerLookupUrl()){ lastLookedUp=dnum; lookupCaller(num); } }
@@ -1782,7 +1827,8 @@ function resetForNewCall(){
   if($('notes')) $('notes').value='';
   if($('owner')) $('owner').value='';
   if($('addr'))  $('addr').value='';
-  if($('phone')) $('phone').value='';   // si la nueva llamada no trae número (privado), NO deja el número anterior en el mensaje
+  setPhoneValue('');   // a private/blocked new call must NOT keep the previous caller's number in the message
+  langManual=false; var _la=$('langAuto'); if(_la) _la.style.display='none';   // new call → language auto-detects again
   state.addrCompact='';
   try{ clearAC(); }catch(e){}
   // Paneles del dueño / info del cliente / sugerencias del transcript / mapas
@@ -1813,7 +1859,7 @@ function resetForNewCall(){
 // Botón manual "Clear all": deja TODO en default (incluye transcript visible y mapas) sin colgar la llamada
 function doClearAll(){
   resetForNewCall();                 // notas, dirección, dueño, paneles, cita→default, transcript HUD, mapas
-  if($('phone')) $('phone').value='';
+  setPhoneValue('');
   var box=$('incoming'); if(box){ box.classList.remove('live'); var lbl=box.querySelector('.lbl'); if(lbl) lbl.textContent='Waiting for call'; }
   if($('incNum')) $('incNum').textContent='— — —';
   if($('incMeta')) $('incMeta').textContent='';
@@ -2168,6 +2214,7 @@ async function dgConnect(){
       var text = (d.channel.alternatives[0] && d.channel.alternatives[0].transcript || '').trim();
       if(!text) return;
       var ch = (d.channel_index && d.channel_index[0]) || 0;
+      if(ch===1) autoSetLang(langFromDgMessage(d, text));   // el CLIENTE define el idioma por default
       dgAppend(ch, text);
     };
     // Solo limpia en llamada NUEVA (sesión nueva); en una reconexión a media llamada NO borra lo ya transcrito
@@ -2228,7 +2275,7 @@ function dgAppend(ch, text){
   var cliente = (ch===1);
   var line=document.createElement('div');
   line.style.margin='3px 0';
-  var label = cliente ? '🗣️ Cliente' : ('🧑‍💼 '+(agentLabel()||'Agent'));
+  var label = cliente ? '🗣️ Client' : ('🧑‍💼 '+(agentLabel()||'Agent'));
   line.innerHTML='<b style="color:'+(cliente?'#86efac':'#93c5fd')+'">'+esc(label)+':</b> '+esc(text);
   el.appendChild(line);
   el.dataset.full=((el.dataset.full||'')+' '+text).slice(-8000);
