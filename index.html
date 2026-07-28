@@ -1753,7 +1753,11 @@ document.addEventListener('click', function(){
 
 reportStatus('available');                 // reporta al abrir
 setInterval(function(){ reportStatus(); }, 20000);  // heartbeat: sigue "vivo"
-pollTeam(); setInterval(pollTeam, 2500);   // live team + caller ID (no softphone needed)
+// Live team + caller ID (no softphone needed). 5s, no 2.5s: el backend cachea la presencia
+// 90s, así que pollear más rápido no da datos más frescos — solo dobla las invocaciones de
+// Supabase/Railway. Cuando SÍ estás en el softphone, los eventos del widget mandan y son
+// instantáneos; este poll es el respaldo para cuando no lo estás.
+pollTeam(); setInterval(pollTeam, 5000);
 setInterval(checkForUpdate, 180000);        // cada 3 min: avisa si hay versión nueva (no te quedas en caché vieja)
 
 /* Salud del bot de WhatsApp: si se cae/desloguea, muestra la barra roja con el link de re-escaneo.
