@@ -177,7 +177,7 @@
 <!-- Alerta: bot de WhatsApp desconectado (necesita re-escaneo) -->
 <a id="waDownBar" href="#" target="_blank" rel="noopener" style="display:none;align-items:center;gap:10px;justify-content:center;background:#dc2626;color:#fff;font-weight:800;padding:11px 16px;text-decoration:none;font-size:14.5px;box-shadow:0 2px 8px rgba(220,38,38,.35)">
   <span style="font-size:18px">⚠️</span>
-  <span id="waDownTxt">WhatsApp bot desconectado — el grupo no recibe citas/reportes. Toca aquí para re-escanear el QR ↗</span>
+  <span id="waDownTxt">WhatsApp bot disconnected — the group isn't receiving appointments/reports. Tap here to re-scan the QR ↗</span>
 </a>
 
 <div class="wrap">
@@ -426,7 +426,7 @@
       <h2>👥 Team status</h2>
       <div class="body" style="padding:12px 14px">
         <div id="teamList" style="display:flex;flex-wrap:wrap;gap:6px;align-items:center"><span style="color:var(--muted);font-size:13px">Connecting…</span></div>
-        <div id="teamAlert" style="display:none;margin-top:10px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 12px;font-weight:800;font-size:15px">🚨 TODOS EN LLAMADA — favor de contestar</div>
+        <div id="teamAlert" style="display:none;margin-top:10px;background:#fee2e2;border:1px solid #fca5a5;color:#991b1b;border-radius:10px;padding:10px 12px;font-weight:800;font-size:15px">🚨 EVERYONE IS ON A CALL — please pick up</div>
         <div class="hintline" style="margin-top:8px">Live from RingCentral — shows who's on a call and with whom (incoming ← / outgoing →). Voice alert when everyone is on a call.</div>
       </div>
     </div>
@@ -518,7 +518,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r36-2026-07-23';
+var APP_VERSION = 'r37-2026-07-28';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -650,7 +650,7 @@ function renderCaller(data, num){
     // Botón que abre esa página en el navegador del agente (humano SÍ pasa) para ver la calle exacta.
     if(!data.address && data.detailUrl)
       rows.push('<a href="'+esc(data.detailUrl)+'" target="_blank" rel="noopener" class="btn primary sm" style="margin-top:8px;display:inline-flex">🏠 Ver dirección completa ↗</a>'
-        + '<div style="font-size:11px;color:var(--muted);margin-top:4px">Abre USPhonebook en tu navegador (ahí sí pasa el Cloudflare).</div>');
+        + '<div style="font-size:11px;color:var(--muted);margin-top:4px">Open USPhonebook in your browser (Cloudflare lets it through there).</div>');
     else if(!data.address && nm)
       rows.push('<div style="font-size:12px;color:var(--muted);margin-top:5px">🏠 La calle exacta está tras un candado de USPhonebook — usa <b>Find owner</b> (GIS del condado) para la dirección.</div>');
     var fields = '<div style="margin-bottom:'+(data.screenshot?'10px':'0')+'">'+rows.join('')+'</div>';
@@ -1644,7 +1644,7 @@ function reportStatus(st){
 function teamAllBusyAlert(){
   var b = $('teamAlert');
   if(b){ b.style.display='block'; setTimeout(function(){ if(b) b.style.display='none'; }, 9000); }
-  try{ toast('🚨 Todos en llamada — favor de contestar'); }catch(_){}
+  try{ toast('🚨 Everyone is on a call — please pick up'); }catch(_){}
   try{
     if(window.speechSynthesis){
       var u = new SpeechSynthesisUtterance('Todos están en llamada. Favor de contestar.');
@@ -1772,8 +1772,8 @@ function pollWaHealth(){
         var txt = document.getElementById('waDownTxt');
         if(txt && d && d.lastDisconnect && d.lastDisconnect.reason){
           txt.textContent = (d.needsScan
-            ? 'WhatsApp bot DESLOGUEADO ('+d.lastDisconnect.reason+') — el grupo no recibe citas/reportes. Toca para re-escanear el QR ↗'
-            : 'WhatsApp bot reconectando ('+d.lastDisconnect.reason+')… si sigue en rojo, toca para re-escanear ↗');
+            ? 'WhatsApp bot LOGGED OUT ('+d.lastDisconnect.reason+') — the group is not receiving appointments/reports. Tap to re-scan the QR ↗'
+            : 'WhatsApp bot reconnecting ('+d.lastDisconnect.reason+')… if it stays red, tap to re-scan ↗');
         }
         bar.href = waBase()+'/wa';
         bar.style.display = 'flex';
