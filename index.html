@@ -518,7 +518,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r37-2026-07-28';
+var APP_VERSION = 'r38-2026-07-29';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1086,9 +1086,16 @@ function requestRcExtension(tries){
    Espanol/ owner
    8328658324
 ============================================================ */
+/* Dirección COMPLETA para el mensaje (calle, ciudad, estado, ZIP) — así el que va a la cita
+   no tiene que adivinar la ciudad. Se quita el ", USA" final porque no aporta nada. */
+function fullAddress(){
+  var full = ($('addr') ? $('addr').value : '').trim();
+  if(!full) return (state.addrCompact || '').trim();
+  return full.replace(/,\s*(USA|United States|EE\.?\s?UU\.?)\s*$/i, '').trim();
+}
 function buildMsg(){
   var name  = $('owner').value.trim();
-  var addr  = (state.addrCompact || $('addr').value || '').trim();
+  var addr  = fullAddress();
   var when  = computeWhen();
   var phone = digits($('phone').value);
   var line4 = (state.lang ? state.lang + '/ ' : '') + state.role;   // idioma solo si el agente lo eligió
