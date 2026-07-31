@@ -203,6 +203,13 @@
         </div>
       </div>
 
+      <!-- Blindaje: aviso + deshacer. Sale si un reset intentó (o logró) borrar lo ya capturado. -->
+      <div id="guardBar" style="display:none;margin:0 0 12px;border:1px solid #fcd34d;background:#fffbeb;border-radius:10px;padding:9px 11px;gap:8px;align-items:center;flex-wrap:wrap">
+        <b id="guardMsg" style="font-size:13px;color:#92400e">🛡️ Data protected — still on this call</b>
+        <button class="btn ghost sm" id="guardRestore" style="margin-left:auto;display:none">↩︎ Restore</button>
+        <button class="btn ghost sm" id="guardDismiss">✕</button>
+      </div>
+
       <!-- Info del cliente (auto al entrar la llamada, dentro de la app) -->
       <div id="callerInfo" style="display:none;margin:0 0 14px;border:1px solid var(--line);border-radius:12px;overflow:hidden;background:#fff">
         <div style="display:flex;align-items:center;gap:8px;padding:8px 12px;background:var(--soft);border-bottom:1px solid var(--line)">
@@ -1650,6 +1657,47 @@ function endCall(id){
   reportStatus('available');
 }
 
+/* ── IDENTIDAD ESTABLE DE LA LLAMADA ────────────────────────────────────────────────
+   El id de sesión NO sirve como identidad: 'rc-call-ring-notify' manda el id de la LLAMADA
+   y 'rc-telephony-session-notify' manda el de la SESIÓN TELEFÓNICA — dos números distintos
+   para la MISMA llamada. Con eso la clave cambiaba sola al contestar y disparaba un reset a
+   media llamada, que borraba el nombre del dueño y la dirección ya capturados (por eso salían
+   citas sin nombre ni dirección). El número del cliente es lo único estable de punta a punta,
+   y es además el mismo dato que usa el sondeo de presencia — así los dos caminos comparan
+   manzanas con manzanas en vez de pelearse entre sí. */
+function callIdentity(from, sessionId){
+  from = from || {};
+  var d = digits(from.phoneNumber || '');
+  if(d.length === 10) return 'n:' + d;                 // número real → identidad estable
+  if(from.extensionNumber) return 'x:' + from.extensionNumber;
+  return sessionId ? 's:' + sessionId : '';            // número oculto → id de sesión (inestable, ver abajo)
+}
+
+/* ¿Hay una llamada en curso AHORA? (sonando o contestada). Compartido por los dos caminos
+   —eventos del softphone y sondeo de presencia— para que el reset ocurra una sola vez. */
+var callInProgress = false;
+
+/* Decide si esta llamada es NUEVA y, solo entonces, limpia el formulario.
+   Dos condiciones, ninguna suficiente por sí sola:
+     1) transición "sin llamada" → "llamada"  → el caso normal;
+     2) cambió el número del cliente estando ya en llamada → respaldo por si RingCentral nunca
+        manda el "colgado" (si no, la cita del cliente anterior se quedaría pegada).
+   La condición 2 exige que AMBAS claves vengan del número ('n:'): una clave de sesión cambia
+   sola dentro de la misma llamada y era justamente lo que borraba los datos en vivo. */
+function maybeResetForCall(key){
+  var prev = window.__resetCallKey || '';
+  var fromIdle = !callInProgress;                                   // (1) nadie estaba en llamada
+  var numToNum = key.charAt(0)==='n' && prev.charAt(0)==='n';
+  var otherCaller = numToNum && key !== prev;                       // (2) otro número estando "en llamada"
+  callInProgress = true;
+  if(!key || (!fromIdle && !otherCaller)) return;
+  window.__resetCallKey = key;
+  // Solo la transición desde "sin llamada" autoriza borrar: ahí nadie está capturando nada.
+  // El caso (2) puede ser una segunda entrante con el agente todavía al teléfono, así que pasa
+  // por el blindaje y se queda en aviso en vez de borrar.
+  resetForNewCall({ fromIdle: fromIdle, otherCaller: otherCaller });
+}
+
 window.addEventListener('message', function(e){
   var d = e.data; if(!d || !d.type) return;
 
@@ -1691,10 +1739,8 @@ window.addEventListener('message', function(e){
     };
     if(from.phoneNumber || from.extensionNumber || from.name) window.__lastFrom = from;
     if(id) window.__rcCallId = id;                              // para el botón Contestar/Colgar
-    // LLAMADA NUEVA → reset UNA vez. Identidad = id de sesión (o número). Robusto aunque RingCentral no mande el
-    // "colgado": una llamada distinta trae otra identidad → resetea (también en rellamada del mismo número, otro id).
-    var callKey = id || from.phoneNumber || from.extensionNumber || '';
-    if(callKey && callKey !== window.__resetCallKey){ window.__resetCallKey = callKey; resetForNewCall(); }
+    // LLAMADA NUEVA → reset UNA vez, y SOLO en la transición "sin llamada" → "llamada".
+    maybeResetForCall(callIdentity(from, id));
     window.__callActive = true;                                 // solo para que el timer de "Test alert" no borre una llamada real
     onIncoming(from.phoneNumber || from.extensionNumber || '', st === 'answered', from);
     myPeer = peerLabel(from);                                   // con quién está la llamada (caller ID)
@@ -1812,7 +1858,7 @@ function renderTeamRC(d){
 /* Caller ID with NO softphone: watch YOUR extension's presence and drive the same
    incoming-call flow (banner, alert, lookups, reset). If the embedded softphone IS
    reporting, it wins — this only fills in when you're not signed into it. */
-var rcPollKey = "", rcIdleTicks = 0, rcCallOn = false;
+var rcPollKey = "", rcIdleTicks = 0;
 function rcCallerDetect(d){
   if(!d || !d.ok || !Array.isArray(d.agents)) return;
   if(window.__rcWidgetSeen && (Date.now() - window.__rcWidgetSeen) < 30000) return;   // el softphone manda
@@ -1823,12 +1869,8 @@ function rcCallerDetect(d){
   if(onCall){
     rcIdleTicks = 0;
     // El formulario se limpia SOLO al pasar de "sin llamada" → "llamada", nunca a media llamada.
-    // (Antes la clave incluía sessionId, que CAMBIA al contestar → borraba lo que el agente
-    //  estaba escribiendo en plena llamada. El número es lo estable.)
-    if(!rcCallOn){
-      rcCallOn = true;
-      if(me.who !== window.__resetCallKey){ window.__resetCallKey = me.who; resetForNewCall(); }
-    }
+    // Misma identidad y mismo guard que el camino del softphone (ver maybeResetForCall).
+    maybeResetForCall(callIdentity({ phoneNumber: me.who }, ''));
     var key = me.state+'|'+me.who;
     if(key !== rcPollKey){                             // solo re-pinta si cambió algo de verdad
       rcPollKey = key;
@@ -1838,7 +1880,7 @@ function rcCallerDetect(d){
   } else if(me.state==='idle'){
     rcPollKey = '';
     // Dos sondeos seguidos en idle antes de dar la llamada por terminada (la presencia parpadea)
-    if(rcCallOn && ++rcIdleTicks >= 2){ rcCallOn = false; rcIdleTicks = 0; callEnded(); }
+    if(callInProgress && ++rcIdleTicks >= 2){ rcIdleTicks = 0; callEnded(); }
   }
 }
 function pollTeam(){
@@ -1944,6 +1986,7 @@ function callEnded(){
   lastLookedUp='';   // la próxima llamada (aunque sea el mismo número) vuelve a buscar
   window.__rcCallId = null;
   window.__callActive = false;   // libera el guard del timer de "Test alert" (el reset se decide por identidad de llamada)
+  callInProgress = false;        // la próxima llamada vuelve a ser una transición "sin llamada" → "llamada"
   var box = $('incoming'); box.classList.remove('live');
   box.querySelector('.lbl').textContent = 'Waiting for call';
   $('incNum').textContent = '— — —';
@@ -1952,8 +1995,79 @@ function callEnded(){
   try{ $('ownerPanel').style.display='none'; $('ownerFrame').src='about:blank'; }catch(e){}   // limpia el recuadro del dueño
 }
 
+/* ── BLINDAJE DE LO CAPTURADO ───────────────────────────────────────────────────────
+   Lo que el agente ya escribió del cliente (dueño, dirección, notas) no se borra solo.
+   Dos capas:
+     1) EN VIVO no se borra nunca. Si algo pide un reset mientras la llamada sigue abierta
+        y ya hay datos capturados, se ignora y se avisa en pantalla.
+     2) Todo reset guarda antes una copia, así que un borrado siempre se puede deshacer
+        con un clic (↩︎ Restore), incluso si algún camino nuevo se nos escapa.        */
+var CAPTURE_FIELDS = ['owner','addr','notes','phone'];
+var lastCapture = null;
+
+/* ¿El agente ya capturó algo de ESTE cliente? Cuenta todo lo que solo pudo poner él: dueño,
+   dirección, notas y el día / idioma / fuente de agua de la cita (los tres arrancan en blanco).
+   El teléfono NO cuenta: lo llena el caller ID solo y se vuelve a llenar en cada evento. */
+function hasCapturedData(){
+  var typed = ['owner','addr','notes','apptDate'].some(function(id){
+    var e = $(id); return !!(e && e.value && e.value.trim());
+  });
+  return typed || !!state.lang || !!state.water || !!state.hotLead || !!(state.addrCompact||'').trim();
+}
+function snapshotCapture(){
+  if(!hasCapturedData()) return;
+  var snap = { at:Date.now(), addrCompact: state.addrCompact||'', county: state.county,
+               lang: state.lang, role: state.role, water: state.water, hotLead: !!state.hotLead,
+               date: ($('apptDate')||{}).value||'', from: ($('timeFrom')||{}).value||'', to: ($('timeTo')||{}).value||'' };
+  CAPTURE_FIELDS.forEach(function(id){ var e=$(id); if(e) snap[id]=e.value; });
+  lastCapture = snap;
+  try{ localStorage.setItem('epwq_capture_v1', JSON.stringify(snap)); }catch(e){}
+}
+function restoreCapture(){
+  var s = lastCapture;
+  if(!s){ try{ s = JSON.parse(localStorage.getItem('epwq_capture_v1')||'null'); }catch(e){} }
+  if(!s){ toast('Nothing to restore'); return; }
+  CAPTURE_FIELDS.forEach(function(id){ if(id==='phone') return; var e=$(id); if(e && s[id]) e.value = s[id]; });
+  if(s.phone) setPhoneValue(s.phone);   // 'phone' tiene espejo (phone2) → siempre por el setter
+  state.addrCompact = s.addrCompact||'';
+  if(s.county) try{ setCounty(s.county); }catch(e){}
+  if(s.lang){ state.lang=s.lang; segMark('langSeg','lang',s.lang); langManual=true; }
+  if(s.role){ state.role=s.role; segMark('roleSeg','role',s.role); }
+  if(s.water){ state.water=s.water; segMark('waterSeg','water',s.water); }
+  if(s.hotLead){ state.hotLead=true; var hl=$('hotLead'); if(hl){ hl.classList.add('on'); hl.textContent='🔥 HOT LEAD ✓'; } }
+  if(s.date && $('apptDate')) $('apptDate').value = s.date;
+  if(s.from && $('timeFrom')) $('timeFrom').value = s.from;
+  if(s.to && $('timeTo')) $('timeTo').value = s.to;
+  try{ updateDayChips(); }catch(e){}
+  buildMsg(); saveDraft(); hideGuardBar();
+  toast('↩︎ Restored');
+}
+function showGuardBar(msg, canRestore){
+  var bar=$('guardBar'); if(!bar) return;
+  $('guardMsg').textContent = msg;
+  $('guardRestore').style.display = canRestore ? '' : 'none';
+  bar.style.display = 'flex';
+}
+function hideGuardBar(){ var b=$('guardBar'); if(b) b.style.display='none'; }
+
 // LLAMADA NUEVA → todo vuelve al inicio: borra notas/dirección/dueño y regresa la cita a sus valores por defecto
-function resetForNewCall(){
+// opts.force = el agente lo pidió a mano ("Clear all") → se salta el blindaje.
+function resetForNewCall(opts){
+  opts = opts || {};
+  // Capa 1: EN VIVO con datos capturados → no se toca nada. Solo se permite borrar cuando
+  // arranca una llamada con el agente libre (opts.fromIdle) o cuando lo pide a mano (force).
+  if(!opts.force && !opts.fromIdle && hasCapturedData()){
+    snapshotCapture();
+    showGuardBar(opts.otherCaller
+      ? '🛡️ New caller — previous capture KEPT. Use 🧹 Clear all when you are done with it.'
+      : '🛡️ Kept — you are still on this call. Use 🧹 Clear all to wipe it.', false);
+    try{ console.log('reset blocked: live call with captured data'); }catch(_){}
+    return;
+  }
+  // Capa 2: siempre se puede deshacer.
+  var had = hasCapturedData();
+  snapshotCapture();
+  if(had) showGuardBar('🧹 New call — previous capture cleared.', true); else hideGuardBar();
   try{ clearDraft(); }catch(e){}   // llamada nueva → borrador limpio
   // Datos de la llamada anterior
   if($('notes')) $('notes').value='';
@@ -2048,7 +2162,7 @@ document.addEventListener('click', function(e){ if(e.target.closest && e.target.
 
 function doClearAll(){
   try{ clearDraft(); }catch(e){}
-  resetForNewCall();                 // notas, dirección, dueño, paneles, cita→default, transcript HUD, mapas
+  resetForNewCall({force:true});      // a mano → se salta el blindaje (pero deja el ↩︎ Restore)
   setPhoneValue('');
   var box=$('incoming'); if(box){ box.classList.remove('live'); var lbl=box.querySelector('.lbl'); if(lbl) lbl.textContent='Waiting for call'; }
   if($('incNum')) $('incNum').textContent='— — —';
@@ -2331,6 +2445,8 @@ $('trClear').addEventListener('click', function(){
   toast('Transcript cleared');
 });
 if($('clearAll')) $('clearAll').addEventListener('click', doClearAll);
+if($('guardRestore')) $('guardRestore').addEventListener('click', restoreCapture);
+if($('guardDismiss')) $('guardDismiss').addEventListener('click', hideGuardBar);
 
 // Pegar el Client ID de TU app de RingCentral → la sesión pasa de 1 hora a 7 días
 if($('rcCfg')) $('rcCfg').addEventListener('click', function(){
