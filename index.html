@@ -518,7 +518,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r38-2026-07-29';
+var APP_VERSION = 'r39-2026-07-31';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -891,7 +891,11 @@ $('ownerPanelClose').addEventListener('click', function(){ $('ownerPanel').style
    El Paso: EPParcels (NAMEREAL/LOCADDRESS). Doña Ana: Parcels (OWNERNAME/SITUSADDRS). Ambos con CORS. */
 var GIS = {
   epcad: { url:'https://gis.elpasotexas.gov/arcgis/rest/services/EPParcels/FeatureServer/0/query', owner:'NAMEREAL', addr:'LOCADDRESS', extra:[],               label:'El Paso county records' },
-  dona:  { url:'https://gis.donaana.gov/server/rest/services/Parcels/FeatureServer/0/query',       owner:'OWNERNAME', addr:'SITUSADDRS', extra:['CITY','ZIP'],  label:'Doña Ana county records' }
+  dona:  { url:'https://gis.donaana.gov/server/rest/services/Parcels/FeatureServer/0/query',       owner:'OWNERNAME', addr:'SITUSADDRS',
+           // Los mismos datos que la ficha del assessor (cuenta, parcela, dirección postal del dueño,
+           // tax area, valores, terreno) — pero sin login ni sesión: se leen del GIS público.
+           extra:['CITY','ZIP','STATE','ACCOUNTNUMBER','PARCELNUMBER','MAILADDR1','MAILADDR2','DEEDHOLDER','CAREOFNAME','TAXAREA','NEIGHBORHOOD','SCHOOLDISTRICT','TOTALACRES','TOTALSQFT','LANDVALUE','BLDGVALUE','TOTALVALUE','LOT','BLOCK','SUBNAME'],
+           label:'Doña Ana county records' }
 };
 function titleCaseName(s){ return String(s||'').toLowerCase().replace(/\b([a-z])/g, function(m,c){ return c.toUpperCase(); }); }
 function donaAssessorUrl(hs){
@@ -971,13 +975,40 @@ function renderOwnerResult(win, hs, a, pretty){
     var url='https://epcad.org/Search?Keywords='+encodeURIComponent((hs.house+' '+hs.street).trim());
     ownerShowEmbed(url, '🏠 EPCAD — owner (El Paso, TX)');   // iframe = confirmación visual (nombre ya llenado)
   } else {
-    ownerShowGis('🏠 County record — owner (Doña Ana, NM)');
+    ownerShowGis('🏠 Full tax record — Doña Ana County, NM');
     var gisBox=$('ownerGis'); if(!gisBox) return;
-    var situs=a[win.cfg.addr]||'', city=a.CITY?titleCaseName(a.CITY):'', zip=a.ZIP||'';
+    var situs=a[win.cfg.addr]||'', city=a.CITY?titleCaseName(a.CITY):'', zip=a.ZIP||'', stt=a.STATE||'NM';
+    function money(v){ var n=Number(v); return (v===null||v===''||isNaN(n)) ? '' : '$'+n.toLocaleString('en-US'); }
+    function num(v,d){ var n=Number(v); return (v===null||v===''||isNaN(n)) ? '' : n.toLocaleString('en-US',{maximumFractionDigits:d||0}); }
+    // Dirección postal del dueño: si es distinta a la de la casa, es señal de que NO vive ahí (renta/inversionista)
+    var mail=[a.MAILADDR1,a.MAILADDR2].filter(Boolean).join(' ').trim();
+    var mailFull = mail ? (mail+(city?', '+titleCaseName(city):'')+', '+stt+' '+zip).trim() : '';
     var rows='<div style="font-size:17px;font-weight:800">'+esc(pretty)+'</div>';
-    if(situs) rows+='<div style="font-size:14px;margin-top:6px">🏠 '+esc(situs)+(city?', '+esc(city):'')+', NM '+esc(zip)+'</div>';
-    if(win.feats.length>1) rows+='<div style="font-size:12px;color:var(--muted);margin-top:6px">'+win.feats.length+' parcels match — showing the first; check the assessor for the exact one.</div>';
-    rows+=ownerActionRow(hs,'Open assessor (full tax record)');
+    if(a.DEEDHOLDER && String(a.DEEDHOLDER).toUpperCase()!==String(a[win.cfg.owner]||'').toUpperCase())
+      rows+='<div style="font-size:12.5px;color:var(--muted);margin-top:2px">Deed holder: '+esc(titleCaseName(a.DEEDHOLDER))+'</div>';
+    if(a.CAREOFNAME) rows+='<div style="font-size:12.5px;color:var(--muted)">c/o '+esc(titleCaseName(a.CAREOFNAME))+'</div>';
+    if(situs) rows+='<div style="font-size:14px;margin-top:6px">🏠 '+esc(situs)+(city?', '+esc(titleCaseName(city)):'')+', '+esc(stt)+' '+esc(zip)+'</div>';
+    if(mailFull) rows+='<div style="font-size:12.5px;color:var(--muted);margin-top:3px">✉️ Owner mailing: '+esc(mailFull)+'</div>';
+    // Tabla compacta con lo mismo que muestra la ficha del assessor
+    var f=[];
+    if(a.ACCOUNTNUMBER) f.push(['Account', a.ACCOUNTNUMBER]);
+    if(a.PARCELNUMBER)  f.push(['Parcel',  a.PARCELNUMBER]);
+    if(a.TAXAREA)       f.push(['Tax area', a.TAXAREA]);
+    if(money(a.TOTALVALUE)) f.push(['Actual value', money(a.TOTALVALUE)]);
+    if(money(a.LANDVALUE))  f.push(['Land', money(a.LANDVALUE)]);
+    if(Number(a.BLDGVALUE)>0) f.push(['Building', money(a.BLDGVALUE)]);
+    if(num(a.TOTALSQFT))  f.push(['Lot size', num(a.TOTALSQFT)+' sqft'+(num(a.TOTALACRES,2)?' ('+num(a.TOTALACRES,2)+' ac)':'')]);
+    if(a.SUBNAME)       f.push(['Subdivision', titleCaseName(a.SUBNAME)]);
+    if(a.LOT||a.BLOCK)  f.push(['Lot / Block', [a.LOT,a.BLOCK].filter(Boolean).join(' / ')]);
+    if(a.NEIGHBORHOOD)  f.push(['Neighborhood', a.NEIGHBORHOOD]);
+    if(a.SCHOOLDISTRICT)f.push(['School dist.', a.SCHOOLDISTRICT]);
+    if(f.length){
+      rows+='<div style="display:grid;grid-template-columns:auto 1fr;gap:2px 10px;margin-top:9px;padding-top:9px;border-top:1px solid var(--line);font-size:12.5px">'
+          + f.map(function(r){ return '<span style="color:var(--muted)">'+esc(r[0])+'</span><b>'+esc(String(r[1]))+'</b>'; }).join('')
+          + '</div>';
+    }
+    if(win.feats.length>1) rows+='<div style="font-size:12px;color:var(--muted);margin-top:6px">'+win.feats.length+' parcels match this address — showing the first.</div>';
+    rows+=ownerActionRow(hs,'Assessor site (needs their guest login)');
     gisBox.innerHTML=rows;
   }
 }
@@ -1774,23 +1805,33 @@ function renderTeamRC(d){
 /* Caller ID with NO softphone: watch YOUR extension's presence and drive the same
    incoming-call flow (banner, alert, lookups, reset). If the embedded softphone IS
    reporting, it wins — this only fills in when you're not signed into it. */
-var rcPollKey = '';
+var rcPollKey = "", rcIdleTicks = 0, rcCallOn = false;
 function rcCallerDetect(d){
   if(!d || !d.ok || !Array.isArray(d.agents)) return;
   if(window.__rcWidgetSeen && (Date.now() - window.__rcWidgetSeen) < 30000) return;   // el softphone manda
   var ext = AGENT_EXT[state.agent]; if(!ext) return;   // sin código de agente no sabemos tu extensión
   var me = d.agents.filter(function(a){ return String(a.ext)===String(ext); })[0];
   if(!me) return;
-  var key = me.state+'|'+(me.who||'')+'|'+(me.sessionId||'');
-  if(key === rcPollKey) return;                        // sin cambios → no dispares nada
-  rcPollKey = key;
-  if((me.state==='incoming' || me.state==='active') && me.who){
-    var callKey = me.sessionId || me.who;
-    if(callKey && callKey !== window.__resetCallKey){ window.__resetCallKey = callKey; resetForNewCall(); }
-    window.__callActive = true;
-    onIncoming(me.who, me.state==='active', {});
+  var onCall = (me.state==='incoming' || me.state==='active') && !!me.who;
+  if(onCall){
+    rcIdleTicks = 0;
+    // El formulario se limpia SOLO al pasar de "sin llamada" → "llamada", nunca a media llamada.
+    // (Antes la clave incluía sessionId, que CAMBIA al contestar → borraba lo que el agente
+    //  estaba escribiendo en plena llamada. El número es lo estable.)
+    if(!rcCallOn){
+      rcCallOn = true;
+      if(me.who !== window.__resetCallKey){ window.__resetCallKey = me.who; resetForNewCall(); }
+    }
+    var key = me.state+'|'+me.who;
+    if(key !== rcPollKey){                             // solo re-pinta si cambió algo de verdad
+      rcPollKey = key;
+      window.__callActive = true;
+      onIncoming(me.who, me.state==='active', {});
+    }
   } else if(me.state==='idle'){
-    callEnded();
+    rcPollKey = '';
+    // Dos sondeos seguidos en idle antes de dar la llamada por terminada (la presencia parpadea)
+    if(rcCallOn && ++rcIdleTicks >= 2){ rcCallOn = false; rcIdleTicks = 0; callEnded(); }
   }
 }
 function pollTeam(){
@@ -1906,6 +1947,7 @@ function callEnded(){
 
 // LLAMADA NUEVA → todo vuelve al inicio: borra notas/dirección/dueño y regresa la cita a sus valores por defecto
 function resetForNewCall(){
+  try{ clearDraft(); }catch(e){}   // llamada nueva → borrador limpio
   // Datos de la llamada anterior
   if($('notes')) $('notes').value='';
   if($('owner')) $('owner').value='';
@@ -1940,7 +1982,65 @@ function resetForNewCall(){
 }
 
 // Botón manual "Clear all": deja TODO en default (incluye transcript visible y mapas) sin colgar la llamada
+/* ── BORRADOR AUTOMÁTICO ───────────────────────────────────────────────────────────
+   Recargar la página (o que se cierre sola) ya no pierde lo capturado del cliente:
+   todo se guarda en este navegador y vuelve tal cual al abrir. Se borra al empezar
+   una llamada NUEVA y con "Clear all". */
+var DRAFT_KEY='epwq_draft_v1', draftTimer=null;
+function saveDraft(){
+  try{
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({
+      at: Date.now(),
+      phone: ($('phone')||{}).value || '',
+      addr:  ($('addr')||{}).value || '',
+      addrCompact: state.addrCompact || '',
+      owner: ($('owner')||{}).value || '',
+      notes: ($('notes')||{}).value || '',
+      date:  ($('apptDate')||{}).value || '',
+      from:  ($('timeFrom')||{}).value || '',
+      to:    ($('timeTo')||{}).value || '',
+      county: state.county, lang: state.lang, role: state.role,
+      water: state.water, hotLead: !!state.hotLead
+    }));
+  }catch(e){}
+}
+function saveDraftSoon(){ clearTimeout(draftTimer); draftTimer=setTimeout(saveDraft, 400); }
+function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
+function restoreDraft(){
+  var d; try{ d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null'); }catch(e){ return; }
+  if(!d) return;
+  if(Date.now() - (d.at||0) > 12*60*60*1000){ clearDraft(); return; }   // más de 12 h → arranca limpio
+  if(d.phone) setPhoneValue(d.phone);
+  if(d.addr && $('addr')) $('addr').value = d.addr;
+  state.addrCompact = d.addrCompact || '';
+  if(d.owner && $('owner')) $('owner').value = d.owner;
+  if(d.notes && $('notes')) $('notes').value = d.notes;
+  if(d.date && $('apptDate')) $('apptDate').value = d.date;
+  if(d.from && $('timeFrom')) $('timeFrom').value = d.from;
+  if(d.to && $('timeTo')) $('timeTo').value = d.to;
+  if(d.county) try{ setCounty(d.county); }catch(e){}
+  if(d.lang){ state.lang=d.lang; segMark('langSeg','lang',d.lang); langManual=true; }
+  if(d.role){ state.role=d.role; segMark('roleSeg','role',d.role); }
+  if(d.water){ state.water=d.water; segMark('waterSeg','water',d.water); }
+  if(d.hotLead){ state.hotLead=true; var hl=$('hotLead'); if(hl){ hl.classList.add('on'); hl.textContent='🔥 HOT LEAD ✓'; } }
+  try{ updateDayChips(); }catch(e){}
+  buildMsg();
+}
+// Guarda ante cualquier captura del agente (con pequeño retardo para no escribir en cada tecla)
+['phone','phone2','addr','owner','notes','apptDate','timeFrom','timeTo'].forEach(function(id){
+  var el=$(id); if(!el) return;
+  el.addEventListener('input', saveDraftSoon);
+  el.addEventListener('change', saveDraftSoon);
+});
+['langSeg','roleSeg','waterSeg','countySeg','hotLead','timeMode'].forEach(function(id){
+  var el=$(id); if(el) el.addEventListener('click', function(){ setTimeout(saveDraft, 0); });
+});
+document.addEventListener('click', function(e){ if(e.target.closest && e.target.closest('[data-day]')) setTimeout(saveDraft, 0); });
+// OJO: restoreDraft() se llama al FINAL del script — si corriera aquí, la inicialización
+// posterior (apptDate='' y fillTimes()) le pisaría el día y la hora guardados.
+
 function doClearAll(){
+  try{ clearDraft(); }catch(e){}
   resetForNewCall();                 // notas, dirección, dueño, paneles, cita→default, transcript HUD, mapas
   setPhoneValue('');
   var box=$('incoming'); if(box){ box.classList.remove('live'); var lbl=box.querySelector('.lbl'); if(lbl) lbl.textContent='Waiting for call'; }
@@ -2427,6 +2527,7 @@ $('timeTo').addEventListener('change', buildMsg);
 
 /* Inicial */
 buildMsg();
+restoreDraft();   // al FINAL: si el agente venía capturando, recarga sin perder nada
 </script>
 </body>
 </html>
