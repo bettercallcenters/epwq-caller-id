@@ -1190,6 +1190,21 @@ $('copyMsg').addEventListener('click', function(){
 
 /* Enviar el mensaje directo al grupo de WhatsApp "EL PASO CALL CENTER" vía el bot (Baileys) */
 function waBase(){ return (callerLookupUrl() || DEFAULT_LOOKUP_URL); }
+
+/* CRM (dispatch): el mensaje también se guarda AQUÍ, no solo en el grupo.
+   Por qué: el bot solo ve los mensajes mientras está conectado, y se desconecta seguido
+   (código 428). Lo que se postea durante una caída se pierde para siempre — WhatsApp no se
+   lo repite al reconectar. El 2026-07-30 así se perdieron 4 de 6 citas de una tanda.
+   Mandándolo desde aquí, el grupo queda como aviso y el CRM como el registro de verdad.
+   El CRM deduplica por teléfono + hora, así que el reenvío del bot NO crea una segunda. */
+var CRM_BASE = 'https://sdcc-integrations-production.up.railway.app';
+function enviarAlCrm(text, agent){
+  return fetch(CRM_BASE + '/api/whatsapp/appointment', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ text:text, agent:agent, source:'caller-id' })
+  }).then(function(r){ return r.json().catch(function(){ return null; }); });
+}
+
 $('waMsg').addEventListener('click', function(){
   var text = $('msg').textContent.trim();
   if(!text){ toast('Nothing to send yet'); return; }
@@ -1197,16 +1212,50 @@ $('waMsg').addEventListener('click', function(){
   if(!state.agent){ toast('Pick your AGENT code first (HS / GD / DV)'); return; }
   var btn=this, old=btn.textContent;
   btn.disabled=true; btn.textContent='Sending…';
-  fetch(waBase()+'/wa/send', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text:text, agent:state.agent }) })
-    .then(function(r){ return r.json().catch(function(){ return {ok:false,error:'bad response'}; }); })
-    .then(function(d){
-      if(d && d.ok){ toast('Sent to EL PASO CALL CENTER ✔'); }
-      else if(d && d.needQr){ toast('WhatsApp bot not linked yet — scan the QR at '+waBase()+'/wa'); }
-      else { toast('WhatsApp bot error: '+((d&&d.error)||'not connected')); }
-    })
-    .catch(function(){ toast('Could not reach the WhatsApp bot'); })
-    .finally(function(){ btn.disabled=false; btn.textContent=old; });
+
+  // Los dos envíos van en paralelo: que el grupo falle NO debe impedir que la cita se guarde.
+  Promise.allSettled([
+    fetch(waBase()+'/wa/send', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text:text, agent:state.agent }) })
+      .then(function(r){ return r.json().catch(function(){ return {ok:false,error:'bad response'}; }); }),
+    enviarAlCrm(text, state.agent)
+  ]).then(function(res){
+    var wa  = res[0].status === 'fulfilled' ? res[0].value : null;
+    var crm = res[1].status === 'fulfilled' ? res[1].value : null;
+
+    var partes = [];
+    if(wa && wa.ok) partes.push('Grupo ✔');
+    else if(wa && wa.needQr) partes.push('Grupo ✗ (falta escanear el QR)');
+    else partes.push('Grupo ✗');
+
+    if(crm && crm.duplicate){
+      // Aviso fuerte y persistente: hay que ir al CRM a revisarla.
+      mostrarDuplicado(crm);
+      partes.push('CRM ⚠️ DUPLICADA');
+    } else if(crm && crm.ok){
+      partes.push('CRM ✔ guardada');
+    } else {
+      partes.push('CRM ✗ NO se guardó');
+    }
+    toast(partes.join('  ·  '));
+  }).finally(function(){ btn.disabled=false; btn.textContent=old; });
 });
+
+/* Banner de duplicado: un toast se va solo y esto no se puede perder de vista. */
+function mostrarDuplicado(crm){
+  var vieja = document.getElementById('dupBanner'); if(vieja) vieja.remove();
+  var cuando = '';
+  try{ cuando = new Date(crm.appt_at).toLocaleString('en-US',{ timeZone:'America/Denver', weekday:'short', month:'numeric', day:'numeric', hour:'numeric', minute:'2-digit' }); }catch(_){}
+  var d = document.createElement('div');
+  d.id = 'dupBanner';
+  d.style.cssText = 'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:99999;background:#b45309;color:#fff;padding:12px 16px;border-radius:12px;box-shadow:0 8px 26px rgba(0,0,0,.35);font-size:14px;font-weight:700;max-width:min(560px,92vw);line-height:1.45';
+  d.innerHTML = '⚠️ <b>CITA DUPLICADA</b><br>' +
+    'Ya existía en el CRM para <b>' + (crm.name || 'este cliente') + '</b>' + (cuando ? ' · ' + cuando : '') + '.<br>' +
+    '<span style="font-weight:500">No se creó otra; se completó la que ya estaba. Revísala en el CRM.</span><br>' +
+    '<a href="https://dispatch-app-production.up.railway.app" target="_blank" style="color:#fff;text-decoration:underline">Abrir el CRM →</a> ' +
+    '<span id="dupCerrar" style="float:right;cursor:pointer;opacity:.85">✕ cerrar</span>';
+  document.body.appendChild(d);
+  var x = document.getElementById('dupCerrar'); if(x) x.onclick = function(){ d.remove(); };
+}
 
 /* Contestar / rechazar / colgar la llamada desde aquí (sin ir al softphone) — RingCentral Embeddable control-call */
 function rcControl(action){
