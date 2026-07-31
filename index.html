@@ -415,7 +415,9 @@
 
     <!-- Softphone de RingCentral EMBEBIDO y grande -->
     <div class="card">
-      <h2>📞 RingCentral softphone</h2>
+      <h2>📞 RingCentral softphone
+        <button class="btn ghost sm" id="rcCfg" style="margin-left:auto" title="Use your own RingCentral app so the sign-in lasts 7 days instead of 1 hour">⚙️ Sign-in</button>
+      </h2>
       <div class="body" style="padding:8px">
         <div id="rcMount" style="width:100%;height:540px;background:#f1f5f9;border-radius:12px"></div>
       </div>
@@ -518,7 +520,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r39-2026-07-31';
+var APP_VERSION = 'r40-2026-07-31';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1504,7 +1506,12 @@ function setLatLng(lat,lng){
 ============================================================ */
 /* Client ID de RingCentral: vacío = app demo (banner "FOR DEMO PURPOSES ONLY").
    Pega el tuyo (Developer Console) para producción y quitar el banner. */
+/* Con la app DEMO de RingCentral (clientId vacío) la sesión usa implicit grant y muere a la
+   HORA de inactividad → hay que firmar una y otra vez. Con clientId propio usa authorization
+   code y dura 7 DÍAS. Se pega aquí una sola vez (queda en este navegador), sin tocar código. */
+var RC_CLIENT_KEY = 'epwq_rc_client_id';
 var RC_CLIENT_ID = '';
+try{ RC_CLIENT_ID = localStorage.getItem(RC_CLIENT_KEY) || ''; }catch(e){}
 
 (function loadRC(){
   // Softphone EMBEBIDO y grande (iframe app.html) en vez del widget flotante chico
@@ -2324,6 +2331,16 @@ $('trClear').addEventListener('click', function(){
   toast('Transcript cleared');
 });
 if($('clearAll')) $('clearAll').addEventListener('click', doClearAll);
+
+// Pegar el Client ID de TU app de RingCentral → la sesión pasa de 1 hora a 7 días
+if($('rcCfg')) $('rcCfg').addEventListener('click', function(){
+  var cur=''; try{ cur=localStorage.getItem(RC_CLIENT_KEY)||''; }catch(e){}
+  var v=prompt('RingCentral Client ID (your own app).\n\nWith the demo app the sign-in dies after 1 hour of inactivity.\nWith your own app (Authorization Code flow) it lasts 7 days.\n\nIn the app set the Redirect URI to:\nhttps://apps.ringcentral.com/integration/ringcentral-embeddable/latest/redirect.html\n\nLeave empty to go back to the demo app.', cur);
+  if(v===null) return;
+  try{ localStorage.setItem(RC_CLIENT_KEY, v.trim()); }catch(e){}
+  toast(v.trim() ? 'Client ID saved — reloading the softphone…' : 'Back to the demo app — reloading…');
+  setTimeout(function(){ location.reload(); }, 900);
+});
 
 function clamp16(f){ var s=Math.max(-1,Math.min(1,f)); return s<0 ? s*0x8000 : s*0x7FFF; }
 
