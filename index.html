@@ -527,7 +527,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r40-2026-07-31';
+var APP_VERSION = 'r41-2026-08-06';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1728,9 +1728,30 @@ window.addEventListener('message', function(e){
     var id = rcCallId(call);
     if(id && rcEndedIds[id]) return;                             // llamada ya terminada → ignora sus eventos tardíos
     var st = rcState(d.type, call);
-    if(st === 'ended'){ endCall(id); return; }
+    if(st === 'ended'){
+      // 🔒 Si la que colgó es una SEGUNDA llamada (ignorada), NO ejecutes callEnded(): eso pondría
+      // callInProgress=false y el siguiente evento de la llamada ACTIVA parecería "llamada nueva"
+      // → borraba la captura (justo el bug del banner "previous capture cleared" a media llamada).
+      if (id && window.__secondIds && window.__secondIds[id]) { rcEndedIds[id]=1; delete window.__secondIds[id]; hideGuardBar(); return; }
+      endCall(id); return;
+    }
     if(st === 'other') return;                                   // estado ambiguo → no dispares nada (evita falso timbre)
     var ex = extractCallFrom(call);
+    // 🔒 PROTECCIÓN EN LLAMADA: eventos de OTRA llamada (2ª línea / transferencia / call waiting)
+    // mientras estás EN llamada NO tocan nada: ni banner, ni número, ni caller-info, ni reset.
+    // Solo un aviso de quién llama. (Identidad estable por número — ver callIdentity.)
+    var rawIdent = callIdentity(ex, id);
+    if (callIsActive && window.__activeIdent && rawIdent && rawIdent !== window.__activeIdent) {
+      if (st === 'ringing') {
+        if (id) { window.__secondIds = window.__secondIds || {}; window.__secondIds[id] = 1; }
+        secondCallNotice(ex);
+        return;
+      }
+      // Contestó la OTRA llamada a propósito (swap): cámbiate a ella SIN borrar lo capturado
+      window.__activeIdent = rawIdent;
+      window.__resetCallKey = rawIdent;   // que ningún evento posterior dispare el reset
+      hideGuardBar();
+    }
     var prev = window.__lastFrom || {};
     var from = {
       phoneNumber:     ex.phoneNumber     || prev.phoneNumber     || '',
@@ -1745,11 +1766,16 @@ window.addEventListener('message', function(e){
     onIncoming(from.phoneNumber || from.extensionNumber || '', st === 'answered', from);
     myPeer = peerLabel(from);                                   // con quién está la llamada (caller ID)
     reportStatus(st === 'answered' ? 'oncall' : 'ringing');   // HUD de equipo
-    if(st === 'answered'){ callIsActive = true; if(dgArmed) dgConnect(); }   // AUTO-transcript SOLO al contestar (no en el timbre, no por voz)
+    if(st === 'answered'){ callIsActive = true; window.__activeIdent = callIdentity(from, id); if(dgArmed) dgConnect(); }   // AUTO-transcript SOLO al contestar
   }
 
   // Llamada terminada / colgada / rechazada
-  if(d.type === 'rc-call-end-notify'){ endCall(rcCallId(rcCallOf(d))); }
+  if(d.type === 'rc-call-end-notify'){
+    var eid = rcCallId(rcCallOf(d));
+    // 🔒 fin de una SEGUNDA llamada ignorada → solo quita el aviso; la llamada activa sigue
+    if (eid && window.__secondIds && window.__secondIds[eid]) { rcEndedIds[eid]=1; delete window.__secondIds[eid]; hideGuardBar(); }
+    else { endCall(eid); }
+  }
 });
 
 /* ===== HUD de equipo: cada app reporta SU estado a Supabase; todas leen el tablero =====
@@ -1987,6 +2013,8 @@ function callEnded(){
   window.__rcCallId = null;
   window.__callActive = false;   // libera el guard del timer de "Test alert" (el reset se decide por identidad de llamada)
   callInProgress = false;        // la próxima llamada vuelve a ser una transición "sin llamada" → "llamada"
+  window.__activeIdent = null;   // ya no hay llamada activa que proteger
+  window.__secondIds = {};       // olvida las segundas llamadas ignoradas
   var box = $('incoming'); box.classList.remove('live');
   box.querySelector('.lbl').textContent = 'Waiting for call';
   $('incNum').textContent = '— — —';
@@ -2049,6 +2077,16 @@ function showGuardBar(msg, canRestore){
   bar.style.display = 'flex';
 }
 function hideGuardBar(){ var b=$('guardBar'); if(b) b.style.display='none'; }
+
+// Aviso de SEGUNDA llamada mientras estás en llamada: informa quién llama, sin tocar nada del formulario
+var secondNoticeTimer = null;
+function secondCallNotice(ex){
+  var num = (ex && (ex.phoneNumber || ex.extensionNumber)) || '';
+  var who = ((ex && ex.name && !/^\+?\d[\d\s()+-]*$/.test(ex.name)) ? ex.name + ' · ' : '') + (num ? prettyPhone(num) : 'número oculto');
+  showGuardBar('📞 Otra llamada entrando: ' + who + ' — tu captura está protegida, no se borra nada.', false);
+  try{ if(ac){ var t=ac.currentTime; beep(t,0.15,660); } }catch(e){}   // un bip corto, sin timbre encima de la llamada
+  clearTimeout(secondNoticeTimer); secondNoticeTimer = setTimeout(hideGuardBar, 45000);
+}
 
 // LLAMADA NUEVA → todo vuelve al inicio: borra notas/dirección/dueño y regresa la cita a sus valores por defecto
 // opts.force = el agente lo pidió a mano ("Clear all") → se salta el blindaje.
