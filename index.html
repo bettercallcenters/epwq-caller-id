@@ -1225,7 +1225,7 @@ if($('langSeg')) $('langSeg').addEventListener('click', function(){ setTimeout(r
 
 $('copyMsg').addEventListener('click', function(){
   if(!requireBeforeSend()) return;
-  copy($('msg').textContent).then(function(){ toast('Message copied ✔'); });
+  copy($('msg').textContent).then(function(){ toast('Message copied ✔'); captureSent = true; });   // copiado = entregado
 });
 
 /* Enviar el mensaje directo al grupo de WhatsApp "EL PASO CALL CENTER" vía el bot (Baileys) */
@@ -1542,11 +1542,25 @@ try{ RC_CLIENT_ID = localStorage.getItem(RC_CLIENT_KEY) || ''; }catch(e){}
    ALERTA DE LLAMADA ENTRANTE — 🔊 sonido + 🔔 notificación + parpadeo de pestaña
 ============================================================ */
 var soundOn=true, ac=null, ringOn=false, ringLoop=null, titleTimer=null, ORIG_TITLE=document.title;
+var acIdle=null;
 
-// El navegador exige un clic antes de reproducir audio → lo desbloqueamos en la 1ª interacción
+/* El navegador exige un clic antes de reproducir audio → creamos el AudioContext en la 1ª
+   interacción para desbloquearlo, pero lo dejamos DORMIDO. Un AudioContext en estado
+   'running' mantiene encendida la salida de audio del sistema y la bocina sisea sin parar
+   aunque no se esté reproduciendo nada. Sólo lo despertamos cuando suena una llamada. */
 document.addEventListener('click', function(){
-  try{ ac = ac || new (window.AudioContext||window.webkitAudioContext)(); if(ac.state==='suspended') ac.resume(); }catch(e){}
+  try{ ac = ac || new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
+  acSleep();
 });
+
+// Duerme la salida de audio cuando no está sonando el timbre (con margen para el último beep)
+function acSleep(){
+  if(acIdle){ clearTimeout(acIdle); acIdle=null; }
+  acIdle = setTimeout(function(){
+    acIdle=null;
+    try{ if(ac && !ringOn && ac.state==='running') ac.suspend(); }catch(e){}
+  }, 1500);
+}
 
 function beep(t,dur,freq){
   var o=ac.createOscillator(), g=ac.createGain();
@@ -1561,10 +1575,17 @@ function ringCycle(){
 }
 function ringStart(){
   if(ringOn || !soundOn) return;
-  try{ ac = ac || new (window.AudioContext||window.webkitAudioContext)(); if(ac.state==='suspended') ac.resume(); }catch(e){ return; }
-  ringOn=true; ringCycle();
+  try{ ac = ac || new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; }
+  if(acIdle){ clearTimeout(acIdle); acIdle=null; }
+  ringOn=true;
+  if(ac.state==='running'){ ringCycle(); return; }
+  try{ ac.resume().then(function(){ if(ringOn) ringCycle(); }).catch(function(){}); }catch(e){ ringOn=false; }
 }
-function ringStop(){ ringOn=false; if(ringLoop){ clearTimeout(ringLoop); ringLoop=null; } }
+function ringStop(){
+  ringOn=false;
+  if(ringLoop){ clearTimeout(ringLoop); ringLoop=null; }
+  acSleep();   // vuelve a apagar la salida de audio
+}
 
 function titleFlashStart(num){
   titleFlashStop(); var on=false;
@@ -2032,6 +2053,9 @@ function callEnded(){
         con un clic (↩︎ Restore), incluso si algún camino nuevo se nos escapa.        */
 var CAPTURE_FIELDS = ['owner','addr','notes','phone'];
 var lastCapture = null;
+// ¿La captura actual YA se entregó? (enviada al grupo/CRM o copiada). Solo una captura ENTREGADA
+// puede auto-limpiarse al entrar la siguiente llamada; una captura sin entregar NUNCA se borra sola.
+var captureSent = false;
 
 /* ¿El agente ya capturó algo de ESTE cliente? Cuenta todo lo que solo pudo poner él: dueño,
    dirección, notas y el día / idioma / fuente de agua de la cita (los tres arrancan en blanco).
@@ -2092,14 +2116,17 @@ function secondCallNotice(ex){
 // opts.force = el agente lo pidió a mano ("Clear all") → se salta el blindaje.
 function resetForNewCall(opts){
   opts = opts || {};
-  // Capa 1: EN VIVO con datos capturados → no se toca nada. Solo se permite borrar cuando
-  // arranca una llamada con el agente libre (opts.fromIdle) o cuando lo pide a mano (force).
-  if(!opts.force && !opts.fromIdle && hasCapturedData()){
+  // Capa 1: una captura SIN ENTREGAR no se borra sola JAMÁS — ni en llamada, ni al colgar y
+  // seguir escribiendo, ni cuando entra la siguiente llamada. Solo se permite el auto-borrado
+  // cuando la captura ya se entregó (enviada/copiada → captureSent) o a mano (force).
+  if(!opts.force && hasCapturedData() && !(opts.fromIdle && captureSent)){
     snapshotCapture();
-    showGuardBar(opts.otherCaller
-      ? '🛡️ New caller — previous capture KEPT. Use 🧹 Clear all when you are done with it.'
-      : '🛡️ Kept — you are still on this call. Use 🧹 Clear all to wipe it.', false);
-    try{ console.log('reset blocked: live call with captured data'); }catch(_){}
+    showGuardBar(opts.fromIdle
+      ? '🛡️ Captura anterior CONSERVADA (no se había enviado). ↩︎ Restore regresa su teléfono · 🧹 Clear all para empezar limpio.'
+      : (opts.otherCaller
+          ? '🛡️ New caller — previous capture KEPT. Use 🧹 Clear all when you are done with it.'
+          : '🛡️ Kept — you are still on this call. Use 🧹 Clear all to wipe it.'), !!opts.fromIdle);
+    try{ console.log('reset blocked: unsent capture'); }catch(_){}
     return;
   }
   // Capa 2: siempre se puede deshacer.
