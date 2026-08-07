@@ -527,7 +527,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r41-2026-08-06';
+var APP_VERSION = 'r42-2026-08-06';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1263,6 +1263,7 @@ $('waMsg').addEventListener('click', function(){
     var crm = res[1].status === 'fulfilled' ? res[1].value : null;
 
     var partes = [];
+    if((wa && wa.ok) || (crm && (crm.ok || crm.duplicate))) captureSent = true;   // entregada en algún lado → ya puede auto-limpiarse en la próxima llamada
     if(wa && wa.ok) partes.push('Grupo ✔');
     else if(wa && wa.needQr) partes.push('Grupo ✗ (falta escanear el QR)');
     else partes.push('Grupo ✗');
@@ -2091,6 +2092,7 @@ function restoreCapture(){
   if(s.from && $('timeFrom')) $('timeFrom').value = s.from;
   if(s.to && $('timeTo')) $('timeTo').value = s.to;
   try{ updateDayChips(); }catch(e){}
+  captureSent = false;   // la está trabajando otra vez → vuelve a ser intocable
   buildMsg(); saveDraft(); hideGuardBar();
   toast('↩︎ Restored');
 }
@@ -2190,7 +2192,7 @@ function saveDraft(){
     }));
   }catch(e){}
 }
-function saveDraftSoon(){ clearTimeout(draftTimer); draftTimer=setTimeout(saveDraft, 400); }
+function saveDraftSoon(){ captureSent = false; clearTimeout(draftTimer); draftTimer=setTimeout(saveDraft, 400); }   // editó → captura viva otra vez
 function clearDraft(){ try{ localStorage.removeItem(DRAFT_KEY); }catch(e){} }
 function restoreDraft(){
   var d; try{ d=JSON.parse(localStorage.getItem(DRAFT_KEY)||'null'); }catch(e){ return; }
@@ -2227,6 +2229,7 @@ document.addEventListener('click', function(e){ if(e.target.closest && e.target.
 
 function doClearAll(){
   try{ clearDraft(); }catch(e){}
+  captureSent = false;                // formulario nuevo, sin entregar
   resetForNewCall({force:true});      // a mano → se salta el blindaje (pero deja el ↩︎ Restore)
   setPhoneValue('');
   var box=$('incoming'); if(box){ box.classList.remove('live'); var lbl=box.querySelector('.lbl'); if(lbl) lbl.textContent='Waiting for call'; }
