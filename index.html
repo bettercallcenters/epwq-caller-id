@@ -536,7 +536,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r43-2026-08-09';
+var APP_VERSION = 'r44-2026-08-10';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -2017,7 +2017,9 @@ function renderLoad(days){
   var w=$('loadWrap'); if(w) w.style.display='';
 }
 function pollLoad(){
-  fetch(CRM_BASE + '/api/appointments/load-report?days=3&format=json', { cache:'no-store' })
+  // Edge function pública de SOLO agregados (conteos por hora, sin datos de clientes).
+  // No usa el CRM directo porque sus rutas ahora requieren login de admin.
+  fetch('https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/appt-load?days=3', { cache:'no-store' })
     .then(function(r){ return r.json(); })
     .then(function(d){ if(d && d.ok && d.days){ renderLoad(d.days); var u=$('loadUpd'); if(u) u.textContent='· en vivo'; } })
     .catch(function(){ /* CRM caído → la tabla simplemente no se actualiza */ });
