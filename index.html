@@ -359,6 +359,15 @@
             <select id="timeTo" class="sel" style="flex:1;min-width:78px"></select>
           </div>
         </div>
+
+        <!-- Carga de citas por hora (del CRM): ver de un vistazo DÓNDE cabe la cita, sin salir de la llamada -->
+        <div class="field" id="loadWrap" style="display:none">
+          <label style="display:flex;align-items:center;gap:8px">📅 Appointment load · next 3 days
+            <span id="loadUpd" style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none"></span>
+          </label>
+          <table id="loadTable" style="width:100%;border-collapse:collapse;font-size:11.5px;line-height:1.1;table-layout:fixed"></table>
+          <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Toca una hora para poner Día + Hora · <b style="color:#16a34a">·</b> = libre · número = citas ya puestas</div>
+        </div>
         <div class="field" style="display:flex;gap:14px;flex-wrap:wrap">
           <div style="min-width:0">
             <label>Language</label>
@@ -527,7 +536,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r42-2026-08-06';
+var APP_VERSION = 'r43-2026-08-09';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1978,6 +1987,57 @@ function pollWaHealth(){
     .catch(function(){ /* red caída: no marcamos como desconectado para no dar falsos positivos */ });
 }
 pollWaHealth(); setInterval(pollWaHealth, 20000);   // revisa la salud del bot cada 20s
+
+/* ── CARGA DE CITAS POR HORA (del CRM): mini-tabla en Appointment Details ──
+   Para que el agente vea DÓNDE cabe la cita mientras habla con el cliente.
+   Toca una celda → pone Día + rango de hora (h a h+2) de un jalón. */
+function loadCellStyle(n){
+  if(!n) return 'background:#f0fdf4;color:#16a34a';                    // libre
+  if(n===1) return 'background:#fffbeb;color:#b45309';                 // 1 cita
+  return 'background:#fee2e2;color:#b91c1c';                           // 2+ = saturado
+}
+function renderLoad(days){
+  var t=$('loadTable'); if(!t || !days || !days.length) return;
+  function hLbl(h){ return (h%12===0?12:h%12) + (h<12?'a':'p'); }
+  var html='<tr><th style="text-align:left;padding:2px 3px;font-size:9.5px;color:var(--muted);width:30px">Hr</th>';
+  days.forEach(function(d,i){ html+='<th style="padding:2px 3px;font-size:10.5px;'+(i===0?'color:#b45309':'color:var(--muted)')+'">'+d.label+'</th>'; });
+  html+='</tr>';
+  for(var h=8;h<=20;h++){
+    html+='<tr><td style="padding:1px 3px;font-size:9.5px;color:var(--muted)">'+hLbl(h)+'</td>';
+    days.forEach(function(d){
+      var n=(d.hours && d.hours[h]) || 0;
+      html+='<td data-date="'+d.date+'" data-h="'+h+'" title="Poner la cita aquí" style="cursor:pointer;text-align:center;padding:2.5px 3px;border:1px solid var(--line);font-weight:800;'+loadCellStyle(n)+'">'+(n||'·')+'</td>';
+    });
+    html+='</tr>';
+  }
+  html+='<tr><td style="padding:2px 3px;font-size:9.5px;color:var(--muted)">Tot</td>';
+  days.forEach(function(d){ html+='<td style="text-align:center;font-weight:800;padding:2px 3px;font-size:11px">'+(d.total||0)+'</td>'; });
+  html+='</tr>';
+  t.innerHTML=html;
+  var w=$('loadWrap'); if(w) w.style.display='';
+}
+function pollLoad(){
+  fetch(CRM_BASE + '/api/appointments/load-report?days=3&format=json', { cache:'no-store' })
+    .then(function(r){ return r.json(); })
+    .then(function(d){ if(d && d.ok && d.days){ renderLoad(d.days); var u=$('loadUpd'); if(u) u.textContent='· en vivo'; } })
+    .catch(function(){ /* CRM caído → la tabla simplemente no se actualiza */ });
+}
+pollLoad(); setInterval(pollLoad, 60000);   // refresca cada minuto
+// Toca una celda → llena Día + Hora (rango de 2h) — parte de la captura, así que vuelve "viva"
+document.addEventListener('click', function(e){
+  var td = e.target.closest && e.target.closest('#loadTable td[data-date]');
+  if(!td) return;
+  var date = td.getAttribute('data-date'), h = parseInt(td.getAttribute('data-h'), 10);
+  if($('apptDate')) $('apptDate').value = date;
+  try{ updateDayChips(); }catch(_){}
+  try{ applyTimeMode('range'); }catch(_){}
+  if($('timeFrom')) $('timeFrom').value = String(h);
+  if($('timeTo'))   $('timeTo').value   = String(Math.min(h+2, 21));
+  captureSent = false;
+  buildMsg(); try{ saveDraft(); }catch(_){}
+  var hh = (h%12===0?12:h%12)+(h<12?' AM':' PM');
+  toast('📅 ' + date + ' · ' + hh);
+});
 
 /* Ciudad aproximada por código de área (gratis, instantáneo). El área ≠ dónde vive, pero da contexto. */
 var AREACODE = {
