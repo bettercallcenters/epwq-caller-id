@@ -366,7 +366,7 @@
             <span id="loadUpd" style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none"></span>
           </label>
           <table id="loadTable" style="width:100%;border-collapse:collapse;font-size:11.5px;line-height:1.1;table-layout:fixed"></table>
-          <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Toca una hora para poner Día + Hora · <b style="color:#16a34a">·</b> = libre · número = citas ya puestas</div>
+          <div style="font-size:10.5px;color:var(--muted);margin-top:3px">Tap an hour to set Day + Time · <b style="color:#16a34a">·</b> = open · number = appointments already booked</div>
         </div>
         <div class="field" style="display:flex;gap:14px;flex-wrap:wrap">
           <div style="min-width:0">
@@ -536,7 +536,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r44-2026-08-10';
+var APP_VERSION = 'r45-2026-08-10';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -2006,7 +2006,7 @@ function renderLoad(days){
     html+='<tr><td style="padding:1px 3px;font-size:9.5px;color:var(--muted)">'+hLbl(h)+'</td>';
     days.forEach(function(d){
       var n=(d.hours && d.hours[h]) || 0;
-      html+='<td data-date="'+d.date+'" data-h="'+h+'" title="Poner la cita aquí" style="cursor:pointer;text-align:center;padding:2.5px 3px;border:1px solid var(--line);font-weight:800;'+loadCellStyle(n)+'">'+(n||'·')+'</td>';
+      html+='<td data-date="'+d.date+'" data-h="'+h+'" title="Book this slot" style="cursor:pointer;text-align:center;padding:2.5px 3px;border:1px solid var(--line);font-weight:800;'+loadCellStyle(n)+'">'+(n||'·')+'</td>';
     });
     html+='</tr>';
   }
@@ -2021,7 +2021,7 @@ function pollLoad(){
   // No usa el CRM directo porque sus rutas ahora requieren login de admin.
   fetch('https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/appt-load?days=3', { cache:'no-store' })
     .then(function(r){ return r.json(); })
-    .then(function(d){ if(d && d.ok && d.days){ renderLoad(d.days); var u=$('loadUpd'); if(u) u.textContent='· en vivo'; } })
+    .then(function(d){ if(d && d.ok && d.days){ renderLoad(d.days); var u=$('loadUpd'); if(u) u.textContent='· live'; } })
     .catch(function(){ /* CRM caído → la tabla simplemente no se actualiza */ });
 }
 pollLoad(); setInterval(pollLoad, 60000);   // refresca cada minuto
@@ -2171,7 +2171,7 @@ var secondNoticeTimer = null;
 function secondCallNotice(ex){
   var num = (ex && (ex.phoneNumber || ex.extensionNumber)) || '';
   var who = ((ex && ex.name && !/^\+?\d[\d\s()+-]*$/.test(ex.name)) ? ex.name + ' · ' : '') + (num ? prettyPhone(num) : 'número oculto');
-  showGuardBar('📞 Otra llamada entrando: ' + who + ' — tu captura está protegida, no se borra nada.', false);
+  showGuardBar('📞 Another call coming in: ' + who + ' — your capture is protected, nothing gets erased.', false);
   try{ if(ac){ var t=ac.currentTime; beep(t,0.15,660); } }catch(e){}   // un bip corto, sin timbre encima de la llamada
   clearTimeout(secondNoticeTimer); secondNoticeTimer = setTimeout(hideGuardBar, 45000);
 }
@@ -2186,7 +2186,7 @@ function resetForNewCall(opts){
   if(!opts.force && hasCapturedData() && !(opts.fromIdle && captureSent)){
     snapshotCapture();
     showGuardBar(opts.fromIdle
-      ? '🛡️ Captura anterior CONSERVADA (no se había enviado). ↩︎ Restore regresa su teléfono · 🧹 Clear all para empezar limpio.'
+      ? '🛡️ Previous capture KEPT (it was never sent). ↩︎ Restore brings back its phone · 🧹 Clear all to start fresh.'
       : (opts.otherCaller
           ? '🛡️ New caller — previous capture KEPT. Use 🧹 Clear all when you are done with it.'
           : '🛡️ Kept — you are still on this call. Use 🧹 Clear all to wipe it.'), !!opts.fromIdle);
