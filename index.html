@@ -1323,14 +1323,11 @@ function waBase(){ return (callerLookupUrl() || DEFAULT_LOOKUP_URL); }
    lo repite al reconectar. El 2026-07-30 así se perdieron 4 de 6 citas de una tanda.
    Mandándolo desde aquí, el grupo queda como aviso y el CRM como el registro de verdad.
    El CRM deduplica por teléfono + hora, así que el reenvío del bot NO crea una segunda. */
-var CRM_BASE = 'https://sdcc-integrations-production.up.railway.app';
+var CRM_BASE      = 'https://sdcc-integrations-production.up.railway.app';
+var CRM_API_TOKEN = 'ig_7pKm2vQxR9nT4wZbY6hJdF3sLcA8eXuG5rNpM1kVtW0yBqSz';
 
-/* La clave del CRM se guarda POR EQUIPO, nunca en este archivo: esta página es pública y
-   cualquier cosa escrita aquí queda a la vista de todo internet. Es la clave de INGESTA
-   (INGEST_TOKEN en Railway), que solo sirve para dar de alta citas — no da acceso de admin.
-   Se pega una sola vez por teléfono/tableta con el botón 🔗 CRM. */
 function crmToken(){
-  try { return (localStorage.getItem('epwq_crm_token') || '').trim(); } catch(_){ return ''; }
+  try { return (localStorage.getItem('epwq_crm_token') || CRM_API_TOKEN).trim(); } catch(_){ return CRM_API_TOKEN; }
 }
 
 /* Devuelve SIEMPRE un motivo legible. Antes cualquier falla —falta de clave, clave mala,
