@@ -536,7 +536,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r46-2026-08-10';
+var APP_VERSION = 'r47-2026-08-11';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -656,6 +656,7 @@ function renderCaller(data, num){
       return;
     }
     st.textContent = data.cached ? 'from cache' : 'found ✔';
+    if(nm){ callerKnownName = nm; try{ refreshOwnerVerdict(); }catch(e){} }   // para comparar con el dueño del condado
     var rows=[];
     if(nm)            rows.push('<div style="font-size:16px;font-weight:800">'+esc(nm)+'</div>');
     if(data.location) rows.push('<div style="font-size:13px;color:var(--muted);margin-top:2px">📍 '+esc(data.location)+'</div>');
@@ -908,7 +909,10 @@ $('ownerPanelClose').addEventListener('click', function(){ $('ownerPanel').style
 /* ===== Dueño automático desde los GIS públicos del condado (sin Cloudflare, se leen del navegador) =====
    El Paso: EPParcels (NAMEREAL/LOCADDRESS). Doña Ana: Parcels (OWNERNAME/SITUSADDRS). Ambos con CORS. */
 var GIS = {
-  epcad: { url:'https://gis.elpasotexas.gov/arcgis/rest/services/EPParcels/FeatureServer/0/query', owner:'NAMEREAL', addr:'LOCADDRESS', extra:[],               label:'El Paso county records' },
+  epcad: { url:'https://gis.elpasotexas.gov/arcgis/rest/services/EPParcels/FeatureServer/0/query', owner:'NAMEREAL', addr:'LOCADDRESS',
+           // HOMESTEAD = exención de vivienda: si trae valor, el dueño VIVE ahí (no es renta) → la señal
+           // más directa para saber si la persona al teléfono es el dueño-habitante.
+           extra:['HOMESTEAD','PIDN','LEGAL_DESC','Subdivision'], label:'El Paso county records' },
   dona:  { url:'https://gis.donaana.gov/server/rest/services/Parcels/FeatureServer/0/query',       owner:'OWNERNAME', addr:'SITUSADDRS',
            // Los mismos datos que la ficha del assessor (cuenta, parcela, dirección postal del dueño,
            // tax area, valores, terreno) — pero sin login ni sesión: se leen del GIS público.
@@ -916,6 +920,48 @@ var GIS = {
            label:'Doña Ana county records' }
 };
 function titleCaseName(s){ return String(s||'').toLowerCase().replace(/\b([a-z])/g, function(m,c){ return c.toUpperCase(); }); }
+
+/* ── ¿LA PERSONA AL TELÉFONO ES EL DUEÑO? ─────────────────────────────────────
+   Compara el nombre de quien llama (USPhonebook / caller ID de RingCentral) con el
+   del registro del condado. Los formatos son distintos ("CIFUENTES IVAN D & LAURA C"
+   vs "Ivan Cifuentes"), así que se comparan PALABRAS: si comparten apellido y nombre
+   es coincidencia fuerte; solo apellido = probable familiar. */
+var callerKnownName = '';        // nombre de quien llama, cuando lo sabemos
+var STOPW = { 'LE':1,'ET':1,'AL':1,'JR':1,'SR':1,'II':1,'III':1,'THE':1,'AND':1,'TRUST':1,'ESTATE':1,'LIVING':1,'FAMILY':1,'REVOCABLE':1,'LLC':1,'INC':1 };
+function nameTokens(s){
+  return String(s||'').toUpperCase().replace(/[^A-ZÑÁÉÍÓÚ\s]/g,' ').split(/\s+/)
+    .filter(function(w){ return w.length>2 && !STOPW[w]; });
+}
+function ownerMatch(callerName, ownerName){
+  var a=nameTokens(callerName), b=nameTokens(ownerName);
+  if(!a.length || !b.length) return null;                       // sin datos → no opinamos
+  var hits=a.filter(function(w){ return b.indexOf(w)>=0; });
+  if(hits.length>=2) return { level:'match', hits:hits };        // nombre + apellido
+  if(hits.length===1) return { level:'partial', hits:hits };     // solo un apellido → familiar/cónyuge
+  return { level:'none', hits:[] };
+}
+/* Franja grande con el veredicto: ¿el que llama es el dueño? + ¿el dueño vive ahí? */
+function ownerVerdictHtml(ownerPretty, homestead){
+  window.__verdictArgs = { owner:ownerPretty, hs:homestead };   // para re-pintar si el nombre llega después
+  var m = ownerMatch(callerKnownName, ownerPretty);
+  var out='<div id="ownerVerdict">';
+  if(m && m.level==='match')
+    out+='<div style="margin-top:8px;background:#dcfce7;border:1px solid #16a34a;color:#166534;border-radius:9px;padding:8px 11px;font-size:14px;font-weight:800">✅ The caller IS on the deed — <b>'+esc(callerKnownName)+'</b> matches the owner. Ask for the inspection as the OWNER.</div>';
+  else if(m && m.level==='partial')
+    out+='<div style="margin-top:8px;background:#fffbeb;border:1px solid #f59e0b;color:#92400e;border-radius:9px;padding:8px 11px;font-size:14px;font-weight:800">⚠️ Same last name (<b>'+esc(titleCaseName(m.hits[0]))+'</b>) — likely spouse/relative. Ask: “Are you the homeowner, or is it under someone else’s name?”</div>';
+  else if(m && m.level==='none')
+    out+='<div style="margin-top:8px;background:#fef2f2;border:1px solid #ef4444;color:#991b1b;border-radius:9px;padding:8px 11px;font-size:14px;font-weight:800">❌ Caller <b>'+esc(callerKnownName)+'</b> is NOT the name on the deed — could be a renter. Confirm before booking.</div>';
+  else
+    out+='<div style="margin-top:8px;background:#f1f5f9;border:1px solid var(--line);color:#334155;border-radius:9px;padding:8px 11px;font-size:13.5px;font-weight:700">👤 Ask: “Is the house under your name?” — we don’t have the caller’s name to compare yet.</div>';
+  if(homestead && String(homestead).trim())
+    out+='<div style="margin-top:6px;background:#eff6ff;border:1px solid #60a5fa;color:#1e40af;border-radius:9px;padding:7px 11px;font-size:13px;font-weight:700">🏡 Homestead exemption → the OWNER LIVES HERE (not a rental).</div>';
+  return out + '</div>';
+}
+// El nombre de quien llama puede llegar DESPUÉS del dueño (USPhonebook tarda) → re-pinta el veredicto
+function refreshOwnerVerdict(){
+  var el=document.getElementById('ownerVerdict'), args=window.__verdictArgs;
+  if(el && args) el.outerHTML = ownerVerdictHtml(args.owner, args.hs);
+}
 function donaAssessorUrl(hs){
   return 'https://assessor.donaanacounty.org/assessor/taxweb/results.jsp?AllTypes=on'
        + '&SitusIDHouseNumber=' + encodeURIComponent(hs.house)
@@ -990,8 +1036,27 @@ function fetchCountyOwner(hs){
 }
 function renderOwnerResult(win, hs, a, pretty){
   if(win.key==='epcad'){
+    // Ficha GRANDE primero (nombre + veredicto ¿es el dueño? + homestead) y DEBAJO el EPCAD
+    // embebido como comprobante visual. Antes solo se veía el iframe y el nombre quedaba
+    // en una línea chiquita — por eso costaba saber de un vistazo quién es el dueño.
     var url='https://epcad.org/Search?Keywords='+encodeURIComponent((hs.house+' '+hs.street).trim());
-    ownerShowEmbed(url, '🏠 EPCAD — owner (El Paso, TX)');   // iframe = confirmación visual (nombre ya llenado)
+    ownerShowGis('🏠 Owner — El Paso County (EPCAD)');
+    var eb=$('ownerGis');
+    if(eb){
+      var situsEp = a[win.cfg.addr] || (hs.house+' '+hs.street);
+      var h='<div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:800">Owner of record</div>'
+          + '<div style="font-size:21px;font-weight:900;line-height:1.15;margin-top:2px">'+esc(pretty)+'</div>'
+          + '<div style="font-size:13.5px;margin-top:4px">🏠 '+esc(titleCaseName(situsEp))+'</div>'
+          + ownerVerdictHtml(pretty, a.HOMESTEAD);
+      if(win.feats.length>1) h+='<div style="font-size:12px;color:var(--muted);margin-top:6px">+'+(win.feats.length-1)+' more parcel(s) matched this address</div>';
+      h+='<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'
+       + '<a class="btn ghost sm" href="'+esc(url)+'" target="_blank" rel="noopener">↗ Open EPCAD</a>'
+       + '<button class="btn ghost sm" data-act="usp">🔎 USPhonebook</button></div>';
+      eb.innerHTML=h;
+    }
+    // EPCAD embebido debajo de la ficha (comprobante visual)
+    $('ownerFrameCrop').style.display=''; $('ownerFrame').src = url;
+    $('ownerPanelOpen').href = url; $('ownerPanelOpen').style.display='';
   } else {
     ownerShowGis('🏠 Full tax record — Doña Ana County, NM');
     var gisBox=$('ownerGis'); if(!gisBox) return;
@@ -1001,12 +1066,17 @@ function renderOwnerResult(win, hs, a, pretty){
     // Dirección postal del dueño: si es distinta a la de la casa, es señal de que NO vive ahí (renta/inversionista)
     var mail=[a.MAILADDR1,a.MAILADDR2].filter(Boolean).join(' ').trim();
     var mailFull = mail ? (mail+(city?', '+titleCaseName(city):'')+', '+stt+' '+zip).trim() : '';
-    var rows='<div style="font-size:17px;font-weight:800">'+esc(pretty)+'</div>';
+    var rows='<div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:800">Owner of record</div>'
+           + '<div style="font-size:21px;font-weight:900;line-height:1.15;margin-top:2px">'+esc(pretty)+'</div>';
     if(a.DEEDHOLDER && String(a.DEEDHOLDER).toUpperCase()!==String(a[win.cfg.owner]||'').toUpperCase())
       rows+='<div style="font-size:12.5px;color:var(--muted);margin-top:2px">Deed holder: '+esc(titleCaseName(a.DEEDHOLDER))+'</div>';
     if(a.CAREOFNAME) rows+='<div style="font-size:12.5px;color:var(--muted)">c/o '+esc(titleCaseName(a.CAREOFNAME))+'</div>';
     if(situs) rows+='<div style="font-size:14px;margin-top:6px">🏠 '+esc(situs)+(city?', '+esc(titleCaseName(city)):'')+', '+esc(stt)+' '+esc(zip)+'</div>';
     if(mailFull) rows+='<div style="font-size:12.5px;color:var(--muted);margin-top:3px">✉️ Owner mailing: '+esc(mailFull)+'</div>';
+    // ¿El que llama es el dueño? En NM no hay homestead: si la dirección postal del dueño ES la
+    // casa, entonces vive ahí (equivalente a la señal de homestead de Texas).
+    var mailSameAsHouse = !!(mail && situs && nameTokens(mail).slice(0,2).join(' ') === nameTokens(situs).slice(0,2).join(' '));
+    rows += ownerVerdictHtml(pretty, mailSameAsHouse ? 'owner-occupied' : '');
     // Tabla compacta con lo mismo que muestra la ficha del assessor
     var f=[];
     if(a.ACCOUNTNUMBER) f.push(['Account', a.ACCOUNTNUMBER]);
@@ -2108,6 +2178,7 @@ function onIncoming(num, answered, from){
 
   // Info automática: nombre (RingCentral) + ciudad por código de área
   var name = (from.name && !/^\+?\d[\d\s()+-]*$/.test(from.name)) ? from.name : '';  // ignora si el "name" es solo el número
+  if(name && !callerKnownName){ callerKnownName = name; try{ refreshOwnerVerdict(); }catch(e){} }   // caller ID como respaldo para el veredicto
   var loc  = areaLoc(num);
   var meta = [];
   if(name) meta.push('👤 ' + name);
@@ -2245,6 +2316,7 @@ function resetForNewCall(opts){
   var ol=$('ownerLaunch'); if(ol) ol.style.display='none';
   var og=$('ownerGis'); if(og){ og.style.display='none'; og.innerHTML=''; }
   var od=$('ownerDetected'); if(od){ od.style.display='none'; od.textContent=''; }
+  callerKnownName=''; window.__verdictArgs=null;   // el veredicto es por-cliente
   var oc=$('ownerCopied'); if(oc) oc.style.display='none';
   var sg=$('addrSuggest'); if(sg){ sg.style.display='none'; sg.innerHTML=''; }
   var ci=$('callerInfo'); if(ci) ci.style.display='none';
