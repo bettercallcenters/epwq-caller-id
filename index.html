@@ -536,7 +536,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r45-2026-08-10';
+var APP_VERSION = 'r46-2026-08-10';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1789,9 +1789,7 @@ window.addEventListener('message', function(e){
         secondCallNotice(ex);
         return;
       }
-      // Contestó la OTRA llamada a propósito (swap): cámbiate a ella SIN borrar lo capturado
-      window.__activeIdent = rawIdent;
-      window.__resetCallKey = rawIdent;   // que ningún evento posterior dispare el reset
+      // Contestó la OTRA llamada a propósito (swap): el bloque de abajo decide el borrado
       hideGuardBar();
     }
     var prev = window.__lastFrom || {};
@@ -1802,6 +1800,18 @@ window.addEventListener('message', function(e){
     };
     if(from.phoneNumber || from.extensionNumber || from.name) window.__lastFrom = from;
     if(id) window.__rcCallId = id;                              // para el botón Contestar/Colgar
+    // ⭐ REGLA DE HECTOR: el TIMBRE nunca borra; el CONTESTAR sí. Al CONTESTAR una llamada de
+    // OTRA persona (identidad distinta a la última contestada) → borra la captura anterior
+    // (con snapshot → ↩︎ Restore). Si vuelve a llamar EL MISMO cliente, NO se borra.
+    if (st === 'answered') {
+      var ansIdent = callIdentity(from, id);
+      if (ansIdent && ansIdent !== lastAnsweredIdent) {
+        resetForNewCall({ answered: true });
+        lastAnsweredIdent = ansIdent;
+        window.__resetCallKey = ansIdent;   // ya reseteado: que nada más lo re-dispare
+        captureSent = false;
+      }
+    }
     // LLAMADA NUEVA → reset UNA vez, y SOLO en la transición "sin llamada" → "llamada".
     maybeResetForCall(callIdentity(from, id));
     window.__callActive = true;                                 // solo para que el timer de "Test alert" no borre una llamada real
@@ -1938,6 +1948,16 @@ function rcCallerDetect(d){
     rcIdleTicks = 0;
     // El formulario se limpia SOLO al pasar de "sin llamada" → "llamada", nunca a media llamada.
     // Misma identidad y mismo guard que el camino del softphone (ver maybeResetForCall).
+    // ⭐ Y la regla de Hector también aquí: CONTESTAR a otra persona borra; el timbre no.
+    if (me.state === 'active') {
+      var pIdent = callIdentity({ phoneNumber: me.who }, '');
+      if (pIdent && pIdent !== lastAnsweredIdent) {
+        resetForNewCall({ answered: true });
+        lastAnsweredIdent = pIdent;
+        window.__resetCallKey = pIdent;
+        captureSent = false;
+      }
+    }
     maybeResetForCall(callIdentity({ phoneNumber: me.who }, ''));
     var key = me.state+'|'+me.who;
     if(key !== rcPollKey){                             // solo re-pinta si cambió algo de verdad
@@ -2130,6 +2150,9 @@ var lastCapture = null;
 // ¿La captura actual YA se entregó? (enviada al grupo/CRM o copiada). Solo una captura ENTREGADA
 // puede auto-limpiarse al entrar la siguiente llamada; una captura sin entregar NUNCA se borra sola.
 var captureSent = false;
+// Última llamada CONTESTADA (identidad estable). NO se limpia al colgar: así, si el MISMO cliente
+// vuelve a marcar, contestar no borra su captura; y contestar a OTRA persona sí la borra.
+var lastAnsweredIdent = '';
 
 /* ¿El agente ya capturó algo de ESTE cliente? Cuenta todo lo que solo pudo poner él: dueño,
    dirección, notas y el día / idioma / fuente de agua de la cita (los tres arrancan en blanco).
@@ -2191,10 +2214,10 @@ function secondCallNotice(ex){
 // opts.force = el agente lo pidió a mano ("Clear all") → se salta el blindaje.
 function resetForNewCall(opts){
   opts = opts || {};
-  // Capa 1: una captura SIN ENTREGAR no se borra sola JAMÁS — ni en llamada, ni al colgar y
-  // seguir escribiendo, ni cuando entra la siguiente llamada. Solo se permite el auto-borrado
-  // cuando la captura ya se entregó (enviada/copiada → captureSent) o a mano (force).
-  if(!opts.force && hasCapturedData() && !(opts.fromIdle && captureSent)){
+  // Capa 1: una captura SIN ENTREGAR no se borra sola JAMÁS por un TIMBRE — solo la borra:
+  // (a) CONTESTAR una llamada de otra persona (opts.answered — regla de Hector), (b) haberla
+  // entregado ya (captureSent) al entrar la siguiente, o (c) el borrado manual (force).
+  if(!opts.force && !opts.answered && hasCapturedData() && !(opts.fromIdle && captureSent)){
     snapshotCapture();
     showGuardBar(opts.fromIdle
       ? '🛡️ Previous capture KEPT (it was never sent). ↩︎ Restore brings back its phone · 🧹 Clear all to start fresh.'
