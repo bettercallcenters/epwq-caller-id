@@ -226,7 +226,14 @@
         <button class="btn ghost sm" id="notifBtn">🔔 Alerts</button>
         <button class="btn ghost sm" id="muteBtn">🔊 Sound: on</button>
         <button class="btn ghost sm" id="testAlert">▶︎ Test</button>
+        <button class="btn ghost sm" id="crmCfg" title="Conectar esta tableta/teléfono con el CRM">🔗 CRM</button>
         <button class="btn sm" id="clearAll" style="margin-left:auto;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;font-weight:800">🧹 Clear all</button>
+      </div>
+
+      <!-- Aviso: sin la clave del CRM las citas se mandan al grupo pero NO se guardan. -->
+      <div id="crmWarn" style="display:none;margin:0 0 10px;border:1px solid #fca5a5;background:#fef2f2;border-radius:10px;padding:9px 11px;gap:8px;align-items:center;flex-wrap:wrap">
+        <b style="font-size:13px;color:#b91c1c">⚠️ Este equipo no está conectado al CRM — las citas NO se guardan ahí</b>
+        <button class="btn ghost sm" id="crmWarnFix" style="margin-left:auto">🔗 Conectar</button>
       </div>
 
       <!-- ===== LIVE TRANSCRIPT (arriba de "Where is the call from") ===== -->
@@ -558,9 +565,9 @@ function checkForUpdate(){
    TOAST
 ============================================================ */
 var toastTimer;
-function toast(msg){
+function toast(msg, ms){
   var t = $('toast'); t.textContent = msg; t.classList.add('show');
-  clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.classList.remove('show'); }, 2200);
+  clearTimeout(toastTimer); toastTimer = setTimeout(function(){ t.classList.remove('show'); }, ms || 2200);
 }
 
 /* ============================================================
@@ -1316,23 +1323,72 @@ function waBase(){ return (callerLookupUrl() || DEFAULT_LOOKUP_URL); }
    lo repite al reconectar. El 2026-07-30 así se perdieron 4 de 6 citas de una tanda.
    Mandándolo desde aquí, el grupo queda como aviso y el CRM como el registro de verdad.
    El CRM deduplica por teléfono + hora, así que el reenvío del bot NO crea una segunda. */
-var CRM_BASE      = 'https://sdcc-integrations-production.up.railway.app';
-var CRM_API_TOKEN = '';   // Pega aquí tu API_TOKEN de Railway (o configúralo con localStorage.setItem('epwq_crm_token', 'tu_token'))
+var CRM_BASE = 'https://sdcc-integrations-production.up.railway.app';
 
+/* La clave del CRM se guarda POR EQUIPO, nunca en este archivo: esta página es pública y
+   cualquier cosa escrita aquí queda a la vista de todo internet. Es la clave de INGESTA
+   (INGEST_TOKEN en Railway), que solo sirve para dar de alta citas — no da acceso de admin.
+   Se pega una sola vez por teléfono/tableta con el botón 🔗 CRM. */
 function crmToken(){
-  try { return (localStorage.getItem('epwq_crm_token') || CRM_API_TOKEN).trim(); } catch(_){ return CRM_API_TOKEN; }
+  try { return (localStorage.getItem('epwq_crm_token') || '').trim(); } catch(_){ return ''; }
 }
 
+/* Devuelve SIEMPRE un motivo legible. Antes cualquier falla —falta de clave, clave mala,
+   CORS, servidor caído— terminaba en el mismo "CRM ✗ NO se guardó", así que nadie podía
+   saber qué arreglar y las citas se perdían en silencio. */
 function enviarAlCrm(text, agent){
-  var headers = { 'Content-Type': 'application/json' };
   var tok = crmToken();
-  if (tok) headers['Authorization'] = 'Bearer ' + tok;
+  if (!tok) return Promise.resolve({ ok:false, motivo:'sin-clave' });
 
   return fetch(CRM_BASE + '/api/whatsapp/appointment', {
     method: 'POST',
-    headers: headers,
+    headers: { 'Content-Type':'application/json', 'Authorization':'Bearer ' + tok },
     body: JSON.stringify({ text: text, agent: agent, source: 'caller-id' })
-  }).then(function(r){ return r.json().catch(function(){ return null; }); });
+  }).then(function(r){
+    return r.json().catch(function(){ return null; }).then(function(body){
+      if (r.ok && body) return Object.assign({ ok:true }, body);
+      if (r.status === 401 || r.status === 403) return { ok:false, motivo:'clave-mala' };
+      return { ok:false, motivo:'error-' + r.status, detalle:(body && body.error) || '' };
+    });
+  }).catch(function(){
+    // fetch solo rechaza por red: servidor caído, sin internet, o CORS bloqueado.
+    return { ok:false, motivo:'sin-conexion' };
+  });
+}
+
+var CRM_MOTIVOS = {
+  'sin-clave':    'CRM ✗ falta conectar este equipo (toca 🔗 CRM)',
+  'clave-mala':   'CRM ✗ la clave del CRM no sirve — pídele la nueva a Hector',
+  'sin-conexion': 'CRM ✗ no se pudo conectar (¿servidor caído o sin internet?)'
+};
+function crmMensajeFallo(crm){
+  if (!crm) return 'CRM ✗ NO se guardó';
+  var m = CRM_MOTIVOS[crm.motivo];
+  if (m) return m;
+  return 'CRM ✗ NO se guardó (' + (crm.motivo || 'desconocido') + ')';
+}
+
+/* Aviso permanente mientras el equipo no esté conectado: sin esto el agente solo se entera
+   cuando ya mandó la cita, y el toast se va solo a los 2 segundos. */
+function refreshCrmWarn(){
+  var w = $('crmWarn'); if(!w) return;
+  w.style.display = crmToken() ? 'none' : 'flex';
+}
+function pedirCrmToken(){
+  var actual = crmToken();
+  var v = prompt(
+    'Clave de INGESTA del CRM (INGEST_TOKEN).\n\n' +
+    'Se guarda solo en este equipo y sirve para que las citas queden guardadas en el CRM.\n' +
+    'Pídesela a Hector. Deja el campo vacío para desconectar.',
+    actual);
+  if (v === null) return;                       // canceló
+  v = v.trim();
+  try {
+    if (v) localStorage.setItem('epwq_crm_token', v);
+    else   localStorage.removeItem('epwq_crm_token');
+  } catch(_){ toast('No se pudo guardar en este navegador'); return; }
+  refreshCrmWarn();
+  toast(v ? '🔗 Equipo conectado al CRM' : 'Equipo desconectado del CRM');
 }
 
 $('waMsg').addEventListener('click', function(){
@@ -1352,11 +1408,11 @@ $('waMsg').addEventListener('click', function(){
     var wa  = res[0].status === 'fulfilled' ? res[0].value : null;
     var crm = res[1].status === 'fulfilled' ? res[1].value : null;
 
-    var partes = [];
+    var partes = [], fallo = false;
     if((wa && wa.ok) || (crm && (crm.ok || crm.duplicate))) captureSent = true;   // entregada en algún lado → ya puede auto-limpiarse en la próxima llamada
     if(wa && wa.ok) partes.push('Grupo ✔');
-    else if(wa && wa.needQr) partes.push('Grupo ✗ (falta escanear el QR)');
-    else partes.push('Grupo ✗');
+    else if(wa && wa.needQr){ partes.push('Grupo ✗ (falta escanear el QR)'); fallo = true; }
+    else { partes.push('Grupo ✗'); fallo = true; }
 
     if(crm && crm.duplicate){
       // Aviso fuerte y persistente: hay que ir al CRM a revisarla.
@@ -1365,9 +1421,12 @@ $('waMsg').addEventListener('click', function(){
     } else if(crm && crm.ok){
       partes.push('CRM ✔ guardada');
     } else {
-      partes.push('CRM ✗ NO se guardó');
+      partes.push(crmMensajeFallo(crm));
+      if(crm && crm.motivo==='sin-clave') refreshCrmWarn();   // vuelve a sacar el aviso rojo
+      fallo = true;
     }
-    toast(partes.join('  ·  '));
+    // Si algo falló, el aviso se queda 8 s: hay que poder leerlo y actuar, no verlo de reojo.
+    toast(partes.join('  ·  '), fallo ? 8000 : 2200);
   }).finally(function(){ btn.disabled=false; btn.textContent=old; });
 });
 
@@ -2681,6 +2740,8 @@ $('trClear').addEventListener('click', function(){
   toast('Transcript cleared');
 });
 if($('clearAll')) $('clearAll').addEventListener('click', doClearAll);
+if($('crmCfg')) $('crmCfg').addEventListener('click', pedirCrmToken);
+if($('crmWarnFix')) $('crmWarnFix').addEventListener('click', pedirCrmToken);
 if($('guardRestore')) $('guardRestore').addEventListener('click', restoreCapture);
 if($('guardDismiss')) $('guardDismiss').addEventListener('click', hideGuardBar);
 
@@ -2896,6 +2957,7 @@ $('timeTo').addEventListener('change', buildMsg);
 
 /* Inicial */
 buildMsg();
+refreshCrmWarn();  // si este equipo no está conectado al CRM, que se vea ANTES de la primera cita
 restoreDraft();   // al FINAL: si el agente venía capturando, recarga sin perder nada
 </script>
 </body>
