@@ -1816,6 +1816,23 @@ function rcState(type, c){
   if(type==='rc-call-start-notify' || /connect|answer|hold|inprogress|in progress|active|established/i.test(ts)) return 'answered';
   return 'other';
 }
+function checkUnsentOnCallEnd(){
+  var phone = digits(($('phone') ? $('phone').value : '') || '');
+  if(phone.length === 10 && typeof captureSent !== 'undefined' && !captureSent){
+    var name = ($('owner') ? $('owner').value.trim() : '') || 'Customer';
+    var vieja = document.getElementById('unsentCallBanner'); if(vieja) vieja.remove();
+    var d = document.createElement('div');
+    d.id = 'unsentCallBanner';
+    d.style.cssText = 'position:fixed;left:50%;top:12px;transform:translateX(-50%);z-index:99999;background:#dc2626;color:#fff;padding:12px 18px;border-radius:12px;box-shadow:0 8px 26px rgba(0,0,0,.35);font-size:14px;font-weight:700;max-width:min(600px,92vw);line-height:1.45';
+    d.innerHTML = '⚠️ <b>UNSENT CALCULATION / APPOINTMENT</b><br>' +
+      'Call ended for <b>' + esc(name) + ' (' + prettyPhone(phone) + ')</b>, but the appointment has not been sent to the CRM yet.<br>' +
+      '<span style="font-weight:500">Click <b>📲 Send to EPCC WP GR</b> to save it.</span> ' +
+      '<span id="unsentCerrar" style="float:right;cursor:pointer;opacity:.85;margin-left:12px">✕ dismiss</span>';
+    document.body.appendChild(d);
+    var x = document.getElementById('unsentCerrar'); if(x) x.onclick = function(){ d.remove(); };
+  }
+}
+
 // Termina la llamada: limpia el banner, calla la alerta y DETIENE el transcript (no puede seguir)
 function endCall(id){
   if(id) rcEndedIds[id]=1;
@@ -1823,6 +1840,7 @@ function endCall(id){
   callEnded();
   stopTranscriptOnCallEnd();
   reportStatus('available');
+  checkUnsentOnCallEnd();
 }
 
 /* ── IDENTIDAD ESTABLE DE LA LLAMADA ────────────────────────────────────────────────
@@ -2910,13 +2928,9 @@ function fmtRange(from,to){
 function computeWhen(){
   var val=$('apptDate').value;
   if(!val) return '';   // sin día elegido → no pone nada en el mensaje (el agente elige el día)
-  var day, today=ymd(new Date()), tom=ymd(dateOff(1));
-  if(val===today){ day='Today'; }
-  else {
-    var d=new Date(val+'T00:00:00');
-    var wd=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
-    day = (val===tom) ? wd : ((d.getMonth()+1)+'/'+d.getDate()+' '+wd);
-  }
+  var d=new Date(val+'T00:00:00');
+  var wd=['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'][d.getDay()];
+  var day = (d.getMonth()+1)+'/'+d.getDate()+' '+wd;
   var from=parseInt($('timeFrom').value,10), to=parseInt($('timeTo').value,10);
   var time = (timeMode==='exact') ? (h12(from)+' '+mer(from)) : fmtRange(from,to);
   return (day+' '+time).trim();
