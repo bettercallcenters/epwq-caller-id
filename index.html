@@ -1246,11 +1246,22 @@ function waBase(){ return (callerLookupUrl() || DEFAULT_LOOKUP_URL); }
    lo repite al reconectar. El 2026-07-30 así se perdieron 4 de 6 citas de una tanda.
    Mandándolo desde aquí, el grupo queda como aviso y el CRM como el registro de verdad.
    El CRM deduplica por teléfono + hora, así que el reenvío del bot NO crea una segunda. */
-var CRM_BASE = 'https://sdcc-integrations-production.up.railway.app';
+var CRM_BASE      = 'https://sdcc-integrations-production.up.railway.app';
+var CRM_API_TOKEN = '';   // Pega aquí tu API_TOKEN de Railway (o configúralo con localStorage.setItem('epwq_crm_token', 'tu_token'))
+
+function crmToken(){
+  try { return (localStorage.getItem('epwq_crm_token') || CRM_API_TOKEN).trim(); } catch(_){ return CRM_API_TOKEN; }
+}
+
 function enviarAlCrm(text, agent){
+  var headers = { 'Content-Type': 'application/json' };
+  var tok = crmToken();
+  if (tok) headers['Authorization'] = 'Bearer ' + tok;
+
   return fetch(CRM_BASE + '/api/whatsapp/appointment', {
-    method:'POST', headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({ text:text, agent:agent, source:'caller-id' })
+    method: 'POST',
+    headers: headers,
+    body: JSON.stringify({ text: text, agent: agent, source: 'caller-id' })
   }).then(function(r){ return r.json().catch(function(){ return null; }); });
 }
 
