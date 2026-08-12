@@ -1345,6 +1345,9 @@ function enviarAlCrm(text, agent){
     return r.json().catch(function(){ return null; }).then(function(body){
       if (r.ok && body) return Object.assign({ ok:true }, body);
       if (r.status === 401 || r.status === 403) return { ok:false, motivo:'clave-mala' };
+      // 5xx = server-side crash (Railway cold start, unhandled parser error).
+      // Tag with _retry:true so the caller can attempt once more before giving up.
+      if (r.status >= 500) return { ok:false, motivo:'error-' + r.status, _retry:true, detalle:(body && body.error) || '' };
       return { ok:false, motivo:'error-' + r.status, detalle:(body && body.error) || '' };
     });
   }).catch(function(){
@@ -1405,25 +1408,38 @@ $('waMsg').addEventListener('click', function(){
     var wa  = res[0].status === 'fulfilled' ? res[0].value : null;
     var crm = res[1].status === 'fulfilled' ? res[1].value : null;
 
-    var partes = [], fallo = false;
-    if((wa && wa.ok) || (crm && (crm.ok || crm.duplicate))) captureSent = true;   // entregada en algún lado → ya puede auto-limpiarse en la próxima llamada
-    if(wa && wa.ok) partes.push('Grupo ✔');
-    else if(wa && wa.needQr){ partes.push('Grupo ✗ (falta escanear el QR)'); fallo = true; }
-    else { partes.push('Grupo ✗'); fallo = true; }
+    function finalizarEnvio(crmResult){
+      var partes = [], fallo = false;
+      if((wa && wa.ok) || (crmResult && (crmResult.ok || crmResult.duplicate))) captureSent = true;
+      if(wa && wa.ok) partes.push('Grupo ✔');
+      else if(wa && wa.needQr){ partes.push('Grupo ✗ (falta escanear el QR)'); fallo = true; }
+      else { partes.push('Grupo ✗'); fallo = true; }
 
-    if(crm && crm.duplicate){
-      // Aviso fuerte y persistente: hay que ir al CRM a revisarla.
-      mostrarDuplicado(crm);
-      partes.push('CRM ⚠️ DUPLICADA');
-    } else if(crm && crm.ok){
-      partes.push('CRM ✔ guardada');
-    } else {
-      partes.push(crmMensajeFallo(crm));
-      if(crm && crm.motivo==='sin-clave') refreshCrmWarn();   // vuelve a sacar el aviso rojo
-      fallo = true;
+      if(crmResult && crmResult.duplicate){
+        mostrarDuplicado(crmResult);
+        partes.push('CRM ⚠️ DUPLICADA');
+      } else if(crmResult && crmResult.ok){
+        // Dismiss unsent banner if the appointment was saved after hang-up
+        var banner = document.getElementById('unsentCallBanner'); if(banner) banner.remove();
+        partes.push('CRM ✔ guardada');
+      } else {
+        partes.push(crmMensajeFallo(crmResult));
+        if(crmResult && crmResult.motivo==='sin-clave') refreshCrmWarn();
+        fallo = true;
+      }
+      toast(partes.join('  ·  '), fallo ? 8000 : 2200);
     }
-    // Si algo falló, el aviso se queda 8 s: hay que poder leerlo y actuar, no verlo de reojo.
-    toast(partes.join('  ·  '), fallo ? 8000 : 2200);
+
+    // Auto-retry once on HTTP 5xx (Railway cold start / transient server crash).
+    // Shows a holding toast so the agent knows a retry is in progress.
+    if(crm && crm._retry){
+      toast('CRM: server error — retrying in 5s…', 5500);
+      setTimeout(function(){
+        enviarAlCrm(text, state.agent).then(function(retried){ finalizarEnvio(retried); });
+      }, 5000);
+    } else {
+      finalizarEnvio(crm);
+    }
   }).finally(function(){ btn.disabled=false; btn.textContent=old; });
 });
 
@@ -1818,7 +1834,9 @@ function rcState(type, c){
 }
 function checkUnsentOnCallEnd(){
   var phone = digits(($('phone') ? $('phone').value : '') || '');
-  if(phone.length === 10 && typeof captureSent !== 'undefined' && !captureSent){
+  // Only alert if the agent ACTUALLY captured appointment data — not just any call with a caller ID.
+  // hasCapturedData() checks for owner name, address, notes or appointment date typed by the agent.
+  if(phone.length === 10 && typeof captureSent !== 'undefined' && !captureSent && hasCapturedData()){
     var name = ($('owner') ? $('owner').value.trim() : '') || 'Customer';
     var vieja = document.getElementById('unsentCallBanner'); if(vieja) vieja.remove();
     var d = document.createElement('div');
