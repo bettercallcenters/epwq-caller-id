@@ -1237,6 +1237,7 @@ function buildMsg(){
   if(state.hotLead) parts.push('🔥 HOT LEAD');   // al final del mensaje
   if(state.agent) parts.push('AGENT: ' + state.agent);   // quién agendó (HS/GD/DV)
   $('msg').textContent = parts.join('\n');
+  try{ recheckRequired(); }catch(e){}
 }
 
 // Botón 🔥 Hot lead (agrega "🔥 HOT LEAD" al mensaje)
@@ -1258,29 +1259,61 @@ function copy(text){
     try{ document.execCommand('copy'); }catch(e){} document.body.removeChild(ta); res();
   });
 }
-/* ── OBLIGATORIO antes de copiar/enviar: TELÉFONO + IDIOMA ──────────────────────────────
-   Sin esto las citas salían al grupo sin número y tenían que pedirlo ("Phone number").
-   Las notas y demás siguen siendo opcionales. */
+/* ── OBLIGATORIO antes de copiar/enviar: TELÉFONO + IDIOMA + FECHA + NOMBRE + DIRECCIÓN ──
+   Sin todos estos datos la cita llega incompleta o sin fecha/hora al grupo y al CRM. */
 function missingRequired(){
   var miss=[];
-  if(digits($('phone').value||'').length!==10) miss.push('phone');
+  if(digits(($('phone') ? $('phone').value : '') || '').length!==10) miss.push('phone');
   if(!state.lang) miss.push('lang');
+  if(!($('apptDate') && $('apptDate').value)) miss.push('date');
+  if(!($('owner') && $('owner').value.trim())) miss.push('owner');
+  if(!fullAddress().trim()) miss.push('addr');
   return miss;
 }
 function markMissing(miss){
-  var needPhone=miss.indexOf('phone')>=0, needLang=miss.indexOf('lang')>=0;
+  var needPhone = miss.indexOf('phone')>=0;
+  var needLang  = miss.indexOf('lang')>=0;
+  var needDate  = miss.indexOf('date')>=0;
+  var needOwner = miss.indexOf('owner')>=0;
+  var needAddr  = miss.indexOf('addr')>=0;
+
   var lg=$('langSeg'), w=$('reqWarn');
-  [$('phone'), $('phone2')].forEach(function(ph){   // el teléfono está en 2 lugares → marca los dos
+  [$('phone'), $('phone2')].forEach(function(ph){
     if(!ph) return;
-    ph.style.borderColor = needPhone?'#ef4444':''; ph.style.boxShadow = needPhone?'0 0 0 3px rgba(239,68,68,.25)':'';
+    ph.style.borderColor = needPhone ? '#ef4444' : '';
+    ph.style.boxShadow   = needPhone ? '0 0 0 3px rgba(239,68,68,.25)' : '';
   });
-  if(lg){ lg.style.borderColor = needLang?'#ef4444':''; lg.style.boxShadow = needLang?'0 0 0 3px rgba(239,68,68,.25)':''; }
+  if(lg){
+    lg.style.borderColor = needLang ? '#ef4444' : '';
+    lg.style.boxShadow   = needLang ? '0 0 0 3px rgba(239,68,68,.25)' : '';
+  }
+  var dt = $('apptDate');
+  if(dt){
+    dt.style.borderColor = needDate ? '#ef4444' : '';
+    dt.style.boxShadow   = needDate ? '0 0 0 3px rgba(239,68,68,.25)' : '';
+  }
+  var ow = $('owner');
+  if(ow){
+    ow.style.borderColor = needOwner ? '#ef4444' : '';
+    ow.style.boxShadow   = needOwner ? '0 0 0 3px rgba(239,68,68,.25)' : '';
+  }
+  var ad = $('addr');
+  if(ad){
+    ad.style.borderColor = needAddr ? '#ef4444' : '';
+    ad.style.boxShadow   = needAddr ? '0 0 0 3px rgba(239,68,68,.25)' : '';
+  }
+
   if(!w) return;
   if(!miss.length){ w.style.display='none'; return; }
+
   var lines=[];
-  if(needPhone) lines.push('📞 Missing the <u>PHONE NUMBER</u> — add it above.');
-  if(needLang)  lines.push('🗣️ Missing the <u>LANGUAGE</u> — pick Spanish / English / Bilingual.');
-  w.innerHTML='⚠️ Can\'t send yet:<br>'+lines.join('<br>');
+  if(needOwner) lines.push('👤 Missing <u>CUSTOMER / OWNER NAME</u> — fill in name above.');
+  if(needAddr)  lines.push('🏠 Missing <u>PROPERTY ADDRESS</u> — fill in address above.');
+  if(needPhone) lines.push('📞 Missing <u>PHONE NUMBER</u> — 10 digits required.');
+  if(needDate)  lines.push('📅 Missing <u>APPOINTMENT DATE & TIME</u> — pick Today, Tomorrow, or select a date.');
+  if(needLang)  lines.push('🗣️ Missing <u>LANGUAGE</u> — pick Spanish / English / Bilingual.');
+
+  w.innerHTML='⚠️ <b>Can\'t send yet (incomplete appointment details):</b><br>'+lines.join('<br>');
   w.style.display='';
 }
 // true = se puede continuar; false = falta algo (ya avisó y resaltó en rojo)
@@ -1288,11 +1321,21 @@ function requireBeforeSend(){
   var miss=missingRequired();
   markMissing(miss);
   if(!miss.length) return true;
-  var both = miss.length>1;
-  toast(both ? '⚠️ Missing phone number and language' : (miss[0]==='phone' ? '⚠️ Missing the phone number' : '⚠️ Missing the language'));
+
+  toast('⚠️ Please complete all highlighted appointment fields before sending (' + miss.length + ' missing)');
+
   try{
-    var el = (miss.indexOf('phone')>=0) ? $('phone') : $('langSeg');
-    if(el){ el.scrollIntoView({behavior:'smooth', block:'center'}); if(el.focus && miss.indexOf('phone')>=0) el.focus(); }
+    var el = null;
+    if(miss.indexOf('owner')>=0) el = $('owner');
+    else if(miss.indexOf('addr')>=0) el = $('addr');
+    else if(miss.indexOf('phone')>=0) el = $('phone');
+    else if(miss.indexOf('date')>=0) el = $('apptDate');
+    else if(miss.indexOf('lang')>=0) el = $('langSeg');
+
+    if(el){
+      el.scrollIntoView({behavior:'smooth', block:'center'});
+      if(el.focus && el !== $('langSeg')) el.focus();
+    }
   }catch(e){}
   return false;
 }
