@@ -1012,6 +1012,12 @@ if($('ownerGis')) $('ownerGis').addEventListener('click', function(e){ if(e.targ
    WHERE usa solo las palabras que de verdad distinguen, hay corte por tiempo y
    las direcciones ya consultadas salen al instante. */
 var OWNER_TIMEOUT_MS = 12000;   // corte duro por condado
+// Mismo presupuesto que el condado, NO uno más corto: en caché fría el CRM tarda lo que
+// tarde el condado, porque le está preguntando por nosotros. Con un corte más corto se
+// agotaba justo antes de que contestara y encima se repetía la consulta directa — el
+// doble de espera para el setter. Un CRM caído falla al instante, no lento, así que el
+// respaldo rápido no necesita este corte.
+var CRM_PARCEL_TIMEOUT_MS = OWNER_TIMEOUT_MS;
 var OWNER_GRACE_MS   = 1200;    // espera al condado elegido si el otro ya contestó
 var ownerCache = {};            // 'condado|208 CADENA ST' → resultado
 
@@ -1039,24 +1045,60 @@ function fetchCountyOwner(hs){
     key.slice(0,2).forEach(function(x){ w+=" AND "+A+" LIKE '%"+x+"%'"; });
     return w;
   }
+  function withTimeout(url, ms, opts){
+    var ctl = (typeof AbortController!=='undefined') ? new AbortController() : null;
+    var o = opts || {};
+    if(ctl) o.signal = ctl.signal;
+    var t = setTimeout(function(){ try{ if(ctl) ctl.abort(); }catch(_){ } }, ms);
+    return fetch(url, o).then(
+      function(r){ clearTimeout(t); return r; },
+      function(e){ clearTimeout(t); throw e; });
+  }
+
+  /* Primero el CRM, que trae la caché compartida por TODOS los equipos; si no está,
+     se le pregunta al condado como siempre.
+     Por qué el CRM primero: el GIS del condado tarda segundos (Doña Ana sobre todo) y a
+     veces no contesta, y el setter está en la llamada con el cliente. El CRM ya guardó
+     esa dirección la primera vez que alguien la buscó — desde cualquier equipo, y aunque
+     haya sido ayer — así que contesta al instante. Y si el condado está caído, el CRM
+     todavía devuelve la copia que sí alcanzó a guardar.
+     El respaldo directo importa: así la app sigue sirviendo aunque el CRM esté caído,
+     no tenga aún esta ruta desplegada, o el equipo no esté conectado con 🔗 CRM. */
   function queryCfg(key){
     var cfg=GIS[key], ck=key+'|'+token;
     if(ownerCache[ck]) return Promise.resolve(ownerCache[ck]);
-    var out=[cfg.owner,cfg.addr].concat(cfg.extra||[]).join(',');
-    // 25 y no 10: con menos predicados vuelven más parcelas, y la de verdad se
-    // elige abajo por prefijo exacto. Cortar en 10 podría dejarla fuera.
-    var url=cfg.url+'?where='+encodeURIComponent(whereFor(cfg))+'&outFields='+encodeURIComponent(out)+'&returnGeometry=false&resultRecordCount=25&f=json';
-    var ctl = (typeof AbortController!=='undefined') ? new AbortController() : null;
-    var t = setTimeout(function(){ try{ if(ctl) ctl.abort(); }catch(_){ } }, OWNER_TIMEOUT_MS);
-    return fetch(url, ctl?{signal:ctl.signal}:undefined)
-      .then(function(r){ return r.json(); })
-      .then(function(j){
-        clearTimeout(t);
-        var r={ key:key, cfg:cfg, feats:(j&&j.features)||[] };
-        ownerCache[ck]=r;                                  // solo se cachea lo que sí respondió
-        return r;
-      })
-      .catch(function(){ clearTimeout(t); return { key:key, cfg:cfg, feats:[], failed:true }; });
+
+    function keep(feats){
+      var r={ key:key, cfg:cfg, feats:feats||[] };
+      ownerCache[ck]=r;                                    // solo se cachea lo que sí respondió
+      return r;
+    }
+    function fromCounty(){
+      var out=[cfg.owner,cfg.addr].concat(cfg.extra||[]).join(',');
+      // 25 y no 10: con menos predicados vuelven más parcelas, y la de verdad se
+      // elige abajo por prefijo exacto. Cortar en 10 podría dejarla fuera.
+      var url=cfg.url+'?where='+encodeURIComponent(whereFor(cfg))+'&outFields='+encodeURIComponent(out)+'&returnGeometry=false&resultRecordCount=25&f=json';
+      return withTimeout(url, OWNER_TIMEOUT_MS)
+        .then(function(r){ return r.json(); })
+        .then(function(j){ return keep((j&&j.features)||[]); })
+        .catch(function(){ return { key:key, cfg:cfg, feats:[], failed:true }; });
+    }
+
+    var tok = (typeof crmToken==='function') ? crmToken() : '';
+    if(!tok) return fromCounty();                          // equipo sin conectar → como antes
+
+    var q = CRM_BASE+'/api/parcel?county='+encodeURIComponent(key)
+          + '&house='+encodeURIComponent(hs.house)+'&street='+encodeURIComponent(hs.street);
+    return withTimeout(q, CRM_PARCEL_TIMEOUT_MS, { headers:{ 'Authorization':'Bearer '+tok } })
+      .then(function(r){ if(!r.ok) throw new Error('crm '+r.status); return r.json(); })
+      .then(function(j){ if(!j || !j.ok) throw new Error('crm body'); return keep(j.features||[]); })
+      .catch(function(e){
+        // Falla RÁPIDA (el CRM no está, CORS, 5xx, ruta aún no desplegada) → vale la pena
+        // preguntarle al condado. Si en cambio se AGOTÓ el tiempo, es que el condado va
+        // lento; preguntarle directo tardaría todavía más, así que no se reintenta.
+        if(e && e.name==='AbortError') return { key:key, cfg:cfg, feats:[], failed:true };
+        return fromCounty();
+      });
   }
 
   var pref = (state.county==='dona') ? 'dona' : 'epcad';
