@@ -993,39 +993,81 @@ if($('ownerGis')) $('ownerGis').addEventListener('click', function(e){ if(e.targ
 // Busca el dueño en AMBOS condados (El Paso + Doña Ana) a la vez, con match FLEXIBLE, y usa el que encuentre.
 // Así ya no importa qué condado esté seleccionado: una dir de NM (Anthony/Santa Teresa/Las Cruces/Sunland Park)
 // la halla en Doña Ana; una de TX en El Paso — todo con el GIS público gratis (sin LandGlide/login/scraping).
+/* ── POR QUÉ TARDABA (sobre todo en Doña Ana) ─────────────────────────────────
+   1) `Promise.all` esperaba SIEMPRE a los dos condados, así que cada búsqueda
+      costaba lo que tardara el MÁS LENTO aunque el condado elegido ya hubiera
+      contestado. El GIS de Doña Ana es más lento que el de El Paso, así que
+      hasta las direcciones de El Paso se quedaban esperándolo — y estando en
+      Doña Ana se esperaba doble.
+   2) El WHERE encadenaba un `LIKE '%PALABRA%'` por CADA palabra de la calle,
+      sufijos incluidos (ST, DR, RD, LN…). Un comodín al inicio impide usar
+      índice: obliga a recorrer la capa de parcelas COMPLETA. Y "ST" además casa
+      con medio condado (STANTON, EASTLAKE, ST ANDREWS…), así que ni siquiera
+      filtraba. Ese barrido se pagaba dos veces por búsqueda.
+   3) Sin timeout: si un servidor se colgaba, el aviso "Looking up owner…" se
+      quedaba ahí para siempre.
+   4) Sin caché: volver a la misma dirección repetía todo el trabajo.
+
+   Ahora: gana el condado elegido en cuanto contesta (no se espera al otro), el
+   WHERE usa solo las palabras que de verdad distinguen, hay corte por tiempo y
+   las direcciones ya consultadas salen al instante. */
+var OWNER_TIMEOUT_MS = 12000;   // corte duro por condado
+var OWNER_GRACE_MS   = 1200;    // espera al condado elegido si el otro ya contestó
+var ownerCache = {};            // 'condado|208 CADENA ST' → resultado
+
+// Sufijos y direccionales: no distinguen una calle de otra y son justo los que
+// fuerzan el barrido completo. Fuera del WHERE (el orden final ya se afina abajo).
+var ST_NOISE = { ST:1,STREET:1,RD:1,ROAD:1,DR:1,DRIVE:1,AVE:1,AV:1,AVENUE:1,LN:1,LANE:1,
+  CT:1,COURT:1,PL:1,PLACE:1,BLVD:1,CIR:1,CIRCLE:1,WAY:1,TER:1,TERRACE:1,TRL:1,TRAIL:1,
+  PKWY:1,HWY:1,LOOP:1,NE:1,NW:1,SE:1,SW:1,NORTH:1,SOUTH:1,EAST:1,WEST:1 };
+
 function fetchCountyOwner(hs){
   if(!hs || !hs.house || !hs.street) return;
   var note=$('ownerDetected');
   if(note){ note.style.display=''; note.textContent='🔎 Looking up owner (El Paso + Doña Ana county records)…'; }
   var token = (hs.house+' '+hs.street).toUpperCase(); window.__ownerReq = token;
 
-  // WHERE flexible: número de casa al inicio + cada palabra de la calle contenida (tolera sufijo, direccional y orden)
+  // Número de casa ANCLADO al inicio (eso sí puede usar índice) + como mucho las
+  // dos palabras más largas de la calle. Menos predicados y mucho más selectivos.
   function whereFor(cfg){
     var A=cfg.addr, house=String(hs.house).replace(/'/g,"''");
-    var words=String(hs.street||'').toUpperCase().replace(/'/g,"''").split(/\s+/).filter(function(w){ return w.length>1; });
-    var w = A+" LIKE '"+house+" %'";
-    words.forEach(function(x){ w += " AND "+A+" LIKE '%"+x+"%'"; });
+    var all=String(hs.street||'').toUpperCase().replace(/'/g,"''").split(/\s+/).filter(Boolean);
+    var key=all.filter(function(w){ return w.length>2 && !ST_NOISE[w]; });
+    if(!key.length) key=all.slice();                       // calles tipo "1ST" → nunca dejarlo vacío
+    key.sort(function(a,b){ return b.length-a.length; });
+    var w=A+" LIKE '"+house+" %'";
+    key.slice(0,2).forEach(function(x){ w+=" AND "+A+" LIKE '%"+x+"%'"; });
     return w;
   }
   function queryCfg(key){
-    var cfg=GIS[key];
+    var cfg=GIS[key], ck=key+'|'+token;
+    if(ownerCache[ck]) return Promise.resolve(ownerCache[ck]);
     var out=[cfg.owner,cfg.addr].concat(cfg.extra||[]).join(',');
-    var url=cfg.url+'?where='+encodeURIComponent(whereFor(cfg))+'&outFields='+encodeURIComponent(out)+'&returnGeometry=false&resultRecordCount=10&f=json';
-    return fetch(url).then(function(r){ return r.json(); }).then(function(j){
-      return { key:key, cfg:cfg, feats:(j&&j.features)||[] };
-    }).catch(function(){ return { key:key, cfg:cfg, feats:[] }; });
+    // 25 y no 10: con menos predicados vuelven más parcelas, y la de verdad se
+    // elige abajo por prefijo exacto. Cortar en 10 podría dejarla fuera.
+    var url=cfg.url+'?where='+encodeURIComponent(whereFor(cfg))+'&outFields='+encodeURIComponent(out)+'&returnGeometry=false&resultRecordCount=25&f=json';
+    var ctl = (typeof AbortController!=='undefined') ? new AbortController() : null;
+    var t = setTimeout(function(){ try{ if(ctl) ctl.abort(); }catch(_){ } }, OWNER_TIMEOUT_MS);
+    return fetch(url, ctl?{signal:ctl.signal}:undefined)
+      .then(function(r){ return r.json(); })
+      .then(function(j){
+        clearTimeout(t);
+        var r={ key:key, cfg:cfg, feats:(j&&j.features)||[] };
+        ownerCache[ck]=r;                                  // solo se cachea lo que sí respondió
+        return r;
+      })
+      .catch(function(){ clearTimeout(t); return { key:key, cfg:cfg, feats:[], failed:true }; });
   }
 
-  Promise.all([queryCfg('epcad'), queryCfg('dona')]).then(function(res){
-    if(window.__ownerReq !== token) return;               // llegó otra dirección → ignora
-    var hits = res.filter(function(r){ return r.feats.length; });
-    var win = hits.length ? (hits.filter(function(r){ return r.key===state.county; })[0] || hits[0]) : null;
-    if(!win){
-      if(note){ note.style.display='none'; }
-      ownerShowGis('🏠 County record — owner');
-      var gb=$('ownerGis'); if(gb) gb.innerHTML='<div style="color:var(--muted);font-size:14px">No parcel match for <b>'+esc(hs.house+' '+hs.street)+'</b> in El Paso or Doña Ana records.</div>'+ownerActionRow(hs,'Open Doña Ana assessor');
-      return;
-    }
+  var pref = (state.county==='dona') ? 'dona' : 'epcad';
+  var alt  = (pref==='epcad') ? 'dona' : 'epcad';
+  var shownKey=null, graceTimer=null;
+  function stale(){ return window.__ownerReq !== token; }
+
+  function render(win){
+    if(stale() || shownKey===win.key) return;
+    if(graceTimer){ clearTimeout(graceTimer); graceTimer=null; }
+    shownKey = win.key;
     // Ordena: los que empiezan EXACTO con "casa calle" primero (más precisos que el match flexible)
     var want=(hs.house+' '+hs.street).toUpperCase();
     win.feats.sort(function(x,y){
@@ -1039,6 +1081,36 @@ function fetchCountyOwner(hs){
     if(pretty){ $('owner').value = pretty; buildMsg(); }   // llena Owner name → entra al mensaje
     if(note){ note.style.display=''; note.textContent='✓ Owner from '+win.cfg.label+': '+pretty+(win.feats.length>1?'  (+'+(win.feats.length-1)+' more)':''); }
     renderOwnerResult(win, hs, a, pretty);
+  }
+  function noMatch(bothFailed){
+    if(stale() || shownKey) return;
+    shownKey='none';
+    if(note){ note.style.display='none'; }
+    ownerShowGis('🏠 County record — owner');
+    var gb=$('ownerGis'); if(!gb) return;
+    gb.innerHTML = (bothFailed
+      ? '<div style="color:#b91c1c;font-size:14px">County records did not answer (server slow or down). Try again, or open the assessor below.</div>'
+      : '<div style="color:var(--muted);font-size:14px">No parcel match for <b>'+esc(hs.house+' '+hs.street)+'</b> in El Paso or Doña Ana records.</div>'
+      ) + ownerActionRow(hs,'Open Doña Ana assessor');
+  }
+
+  var pPref=queryCfg(pref), pAlt=queryCfg(alt);
+
+  // Camino rápido: si el condado elegido trae dueño, se pinta YA — sin esperar al otro.
+  pPref.then(function(r){
+    if(stale()) return;
+    if(r.feats.length) return render(r);                   // manda el elegido, aunque ya se hubiera pintado el otro
+    pAlt.then(function(o){                                 // el elegido no lo tiene → decide el otro
+      if(stale() || shownKey) return;
+      if(o.feats.length) render(o); else noMatch(r.failed && o.failed);
+    });
+  });
+
+  // Si el OTRO condado ya contestó y el elegido sigue sin dar señales, se le da una
+  // gracia corta y se pinta el que sí respondió (es el caso lento de Doña Ana).
+  pAlt.then(function(o){
+    if(stale() || shownKey || !o.feats.length) return;
+    graceTimer=setTimeout(function(){ if(!stale() && !shownKey) render(o); }, OWNER_GRACE_MS);
   });
 }
 function renderOwnerResult(win, hs, a, pretty){
