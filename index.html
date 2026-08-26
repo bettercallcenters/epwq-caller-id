@@ -543,7 +543,7 @@ function googlePredict(q){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r47-2026-08-11';
+var APP_VERSION = 'r48-2026-08-11';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1128,12 +1128,13 @@ function fetchCountyOwner(hs){
     if(stale() || shownKey) return;
     shownKey='none';
     if(note){ note.style.display='none'; }
+    // El condado SÍ contestó pero no hay ese número → casi siempre se oyó mal: enseña las
+    // casas que sí existen en esa calle para elegir la correcta (no un callejón sin salida).
+    if(!bothFailed){ streetFallback(hs); return; }
     ownerShowGis('🏠 County record — owner');
     var gb=$('ownerGis'); if(!gb) return;
-    gb.innerHTML = (bothFailed
-      ? '<div style="color:#b91c1c;font-size:14px">County records did not answer (server slow or down). Try again, or open the assessor below.</div>'
-      : '<div style="color:var(--muted);font-size:14px">No parcel match for <b>'+esc(hs.house+' '+hs.street)+'</b> in El Paso or Doña Ana records.</div>'
-      ) + ownerActionRow(hs,'Open Doña Ana assessor');
+    gb.innerHTML = '<div style="color:#b91c1c;font-size:14px">County records did not answer (server slow or down). Try again, or open the assessor below.</div>'
+      + ownerActionRow(hs,'Open Doña Ana assessor');
   }
 
   var pPref=queryCfg(pref), pAlt=queryCfg(alt);
@@ -1155,6 +1156,79 @@ function fetchCountyOwner(hs){
     graceTimer=setTimeout(function(){ if(!stale() && !shownKey) render(o); }, OWNER_GRACE_MS);
   });
 }
+/* ── SIN NÚMERO EXACTO → enseña las casas que SÍ existen en esa calle ─────────────
+   Antes salía solo "No parcel match" y el agente se quedaba sin nada. Casi siempre el
+   número se oyó mal (ej. "227 Onnies Acres" cuando la calle solo tiene 110 y 420-495).
+   Ahora se listan los números reales con su dueño, ordenados por cercanía al que dijo
+   el cliente, y con un clic se elige el correcto. */
+function streetFallback(hs){
+  ownerShowGis('🏠 That house number isn’t in the county records');
+  var box=$('ownerGis'); if(!box) return;
+  box.innerHTML='<div style="color:var(--muted);font-size:14px">🔎 Looking for other houses on <b>'+esc(titleCaseName(hs.street))+'</b>…</div>';
+  function byStreet(key){
+    var cfg=GIS[key], A=cfg.addr;
+    var words=String(hs.street||'').toUpperCase().replace(/'/g,"''").split(/\s+/).filter(function(w){ return w.length>2; });
+    if(!words.length) return Promise.resolve({key:key,cfg:cfg,feats:[]});
+    var w=words.map(function(x){ return A+" LIKE '%"+x+"%'"; }).join(' AND ');
+    var out=[cfg.owner,cfg.addr].concat(key==='dona'?['CITY','ZIP']:['HOMESTEAD']).join(',');
+    return fetch(cfg.url+'?where='+encodeURIComponent(w)+'&outFields='+encodeURIComponent(out)+'&returnGeometry=false&resultRecordCount=60&f=json')
+      .then(function(r){ return r.json(); })
+      .then(function(j){ return {key:key,cfg:cfg,feats:(j&&j.features)||[]}; })
+      .catch(function(){ return {key:key,cfg:cfg,feats:[]}; });
+  }
+  Promise.all([byStreet('epcad'), byStreet('dona')]).then(function(res){
+    var rows=[];
+    res.forEach(function(r){
+      r.feats.forEach(function(f){
+        var at=f.attributes||{}, ad=String(at[r.cfg.addr]||'').trim();
+        var n=parseInt((ad.match(/^\s*(\d+)/)||[])[1],10);
+        rows.push({ addr:ad, owner:titleCaseName(at[r.cfg.owner]||''), num:isNaN(n)?999999:n,
+                    city:at.CITY?titleCaseName(at.CITY):'', hs:at.HOMESTEAD||'', county:r.key });
+      });
+    });
+    var want=parseInt(hs.house,10)||0;
+    rows.sort(function(x,y){ return Math.abs(x.num-want)-Math.abs(y.num-want); });
+    if(!rows.length){
+      box.innerHTML='<div style="font-size:14px;color:#991b1b;font-weight:700">❌ Neither the house number nor the street <b>'+esc(titleCaseName(hs.street))+'</b> is in El Paso or Doña Ana records.</div>'
+        + '<div style="font-size:13px;color:var(--muted);margin-top:6px">Confirm the street name with the customer (it may be spelled differently, or the property is outside both counties).</div>'
+        + ownerActionRow(hs,'Open Doña Ana assessor');
+      return;
+    }
+    var h='<div style="background:#fffbeb;border:1px solid #f59e0b;color:#92400e;border-radius:9px;padding:9px 11px;font-size:14px;font-weight:800">⚠️ There is no <b>'+esc(hs.house)+'</b> on '+esc(titleCaseName(hs.street))+'. Confirm the number with the customer.</div>'
+      + '<div style="font-size:12.5px;color:var(--muted);margin-top:9px;font-weight:700">Real houses on this street ('+rows.length+') — tap the right one:</div>'
+      + '<div style="max-height:230px;overflow:auto;margin-top:5px;border:1px solid var(--line);border-radius:9px">';
+    rows.slice(0,40).forEach(function(r,i){
+      h+='<div data-pick="'+esc(r.addr)+'" data-county="'+r.county+'" data-owner="'+esc(r.owner)+'" data-hs="'+esc(r.hs||'')+'" data-city="'+esc(r.city||'')+'" style="cursor:pointer;padding:6px 9px;font-size:13px;'+(i?'border-top:1px solid var(--line);':'')+'">'
+       + '<b>'+esc(titleCaseName(r.addr))+'</b>'+(r.city?' <span style="color:var(--muted)">· '+esc(r.city)+'</span>':'')
+       + (r.hs?' <span style="color:#1e40af;font-size:11px;font-weight:800">🏡 lives here</span>':'')
+       + '<div style="color:var(--muted);font-size:12px">'+esc(r.owner)+'</div></div>';
+    });
+    h+='</div>'+ownerActionRow(hs,'Open Doña Ana assessor');
+    box.innerHTML=h;
+  });
+}
+// Clic en una casa de la lista → usa el dueño que YA trae la lista (sin re-consultar: es
+// instantáneo y no falla con direcciones raras tipo "#3") y pinta la ficha con el veredicto.
+if($('ownerGis')) $('ownerGis').addEventListener('click', function(e){
+  var el=e.target.closest && e.target.closest('[data-pick]'); if(!el) return;
+  var full=el.getAttribute('data-pick'), cty=el.getAttribute('data-county');
+  var own=el.getAttribute('data-owner')||'', hsx=el.getAttribute('data-hs')||'', city=el.getAttribute('data-city')||'';
+  if(cty && cty!==state.county) try{ setCounty(cty); }catch(_){}
+  var pretty = titleCaseName(full) + (city? ', '+city : '');
+  $('addr').value = pretty; state.addrCompact = pretty;
+  if(own){ $('owner').value = own; }
+  captureSent=false; buildMsg(); try{ saveDraft(); }catch(_){}
+  var note=$('ownerDetected'); if(note){ note.style.display=''; note.textContent='✓ Owner: '+own; }
+  ownerShowGis('🏠 Owner — county records');
+  var box=$('ownerGis'); if(box){
+    box.innerHTML='<div style="font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px;font-weight:800">Owner of record</div>'
+      + '<div style="font-size:21px;font-weight:900;line-height:1.15;margin-top:2px">'+esc(own)+'</div>'
+      + '<div style="font-size:13.5px;margin-top:4px">🏠 '+esc(pretty)+'</div>'
+      + ownerVerdictHtml(own, hsx)
+      + '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px"><button class="btn ghost sm" data-act="usp">🔎 USPhonebook</button></div>';
+  }
+});
+
 function renderOwnerResult(win, hs, a, pretty){
   if(win.key==='epcad'){
     // Ficha GRANDE primero (nombre + veredicto ¿es el dueño? + homestead) y DEBAJO el EPCAD
