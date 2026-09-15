@@ -648,7 +648,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r49-2026-09-15';
+var APP_VERSION = 'r50-2026-09-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1095,9 +1095,20 @@ function runUsp(){
   if(callerLookupUrl()) lookupCaller(ph); else openUsp(ph);
 }
 // Fila de acciones de la tarjeta del dueño: assessor + USPhonebook
-function ownerActionRow(hs, assessorLabel){
+function epcadSearchUrl(hs){
+  return 'https://epcad.org/Search?Keywords='+encodeURIComponent((hs.house+' '+hs.street).trim());
+}
+/* which: 'epcad' | 'dona' | 'both'.
+   Antes SIEMPRE enlazaba a Doña Ana, aunque la dirección fuera de El Paso —
+   el agente terminaba en el condado equivocado. */
+function ownerActionRow(hs, which){
+  var links='';
+  if(which!=='dona')
+    links += '<a class="btn ghost sm" href="'+esc(epcadSearchUrl(hs))+'" target="_blank" rel="noopener">↗ Open EPCAD (El Paso)</a>';
+  if(which!=='epcad')
+    links += '<a class="btn ghost sm" href="'+esc(donaAssessorUrl(hs))+'" target="_blank" rel="noopener">↗ Open Doña Ana assessor</a>';
   return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'
-       + '<a class="btn ghost sm" href="'+esc(donaAssessorUrl(hs))+'" target="_blank" rel="noopener">↗ '+assessorLabel+'</a>'
+       + links
        + '<button class="btn ghost sm" data-act="usp">🔎 USPhonebook</button>'
        + '</div>';
 }
@@ -1248,7 +1259,7 @@ function fetchCountyOwner(hs){
     ownerShowGis('🏠 County record — owner');
     var gb=$('ownerGis'); if(!gb) return;
     gb.innerHTML = '<div style="color:#b91c1c;font-size:14px">County records did not answer (server slow or down). Try again, or open the assessor below.</div>'
-      + ownerActionRow(hs,'Open Doña Ana assessor');
+      + ownerActionRow(hs,'both');   // ningún condado contestó → ofrece los dos
   }
 
   var pPref=queryCfg(pref), pAlt=queryCfg(alt);
@@ -1303,9 +1314,16 @@ function streetFallback(hs){
     var want=parseInt(hs.house,10)||0;
     rows.sort(function(x,y){ return Math.abs(x.num-want)-Math.abs(y.num-want); });
     if(!rows.length){
-      box.innerHTML='<div style="font-size:14px;color:#991b1b;font-weight:700">❌ Neither the house number nor the street <b>'+esc(titleCaseName(hs.street))+'</b> is in El Paso or Doña Ana records.</div>'
-        + '<div style="font-size:13px;color:var(--muted);margin-top:6px">Confirm the street name with the customer (it may be spelled differently, or the property is outside both counties).</div>'
-        + ownerActionRow(hs,'Open Doña Ana assessor');
+      /* El GIS público es una FOTO del padrón y va atrasada: los fraccionamientos NUEVOS
+         todavía no están en la capa, aunque EPCAD en vivo sí los tenga (ej. 13849 Paseo de
+         Gloria Ave → SANCHEZ ADRIAN E). Antes esto era un callejón sin salida que además
+         mandaba a Doña Ana; ahora cargamos la búsqueda EN VIVO de EPCAD aquí mismo. */
+      box.innerHTML='<div style="font-size:14px;color:#991b1b;font-weight:700">❌ <b>'+esc(titleCaseName((hs.house+' '+hs.street).trim()))+'</b> isn\'t in the El Paso / Doña Ana GIS snapshot.</div>'
+        + '<div style="font-size:13px;color:var(--muted);margin-top:6px">The GIS layer lags behind on new construction. The live EPCAD search is loading below — read the owner there. If it\'s empty too, confirm the street spelling with the customer.</div>'
+        + ownerActionRow(hs,'both');
+      var liveUrl = epcadSearchUrl(hs);
+      $('ownerFrameCrop').style.display=''; $('ownerFrame').src = liveUrl;
+      $('ownerPanelOpen').href = liveUrl; $('ownerPanelOpen').style.display='';
       return;
     }
     var h='<div style="background:#fffbeb;border:1px solid #f59e0b;color:#92400e;border-radius:9px;padding:9px 11px;font-size:14px;font-weight:800">⚠️ There is no <b>'+esc(hs.house)+'</b> on '+esc(titleCaseName(hs.street))+'. Confirm the number with the customer.</div>'
@@ -1317,7 +1335,8 @@ function streetFallback(hs){
        + (r.hs?' <span style="color:#1e40af;font-size:11px;font-weight:800">🏡 lives here</span>':'')
        + '<div style="color:var(--muted);font-size:12px">'+esc(r.owner)+'</div></div>';
     });
-    h+='</div>'+ownerActionRow(hs,'Open Doña Ana assessor');
+    // El assessor debe ser el del condado donde SÍ apareció la calle, no siempre Doña Ana
+    h+='</div>'+ownerActionRow(hs, rows[0].county==='epcad' ? 'epcad' : 'dona');
     box.innerHTML=h;
   });
 }
@@ -1405,7 +1424,7 @@ function renderOwnerResult(win, hs, a, pretty){
           + '</div>';
     }
     if(win.feats.length>1) rows+='<div style="font-size:12px;color:var(--muted);margin-top:6px">'+win.feats.length+' parcels match this address — showing the first.</div>';
-    rows+=ownerActionRow(hs,'Assessor site (needs their guest login)');
+    rows+=ownerActionRow(hs,'dona');   // esta rama es el registro de Doña Ana (NM)
     gisBox.innerHTML=rows;
   }
 }
