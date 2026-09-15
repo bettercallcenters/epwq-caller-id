@@ -493,57 +493,162 @@ var VIEWBOX = {
 };
 
 /* ============================================================
-   GOOGLE PLACES (opcional) — autocompletar calidad Google Maps
-   >>> Pega tu API key de Google (Places) abajo para activarlo. <<<
-   Si se deja vacío, la app usa OpenStreetMap (gratis) automáticamente.
+   SUGERENCIAS DE DIRECCIÓN — 3 motores con respaldo automático
+     1) Google Places  — la mejor calidad, PERO requiere billing activo en Google Cloud.
+     2) ArcGIS World Geocoder — gratis, sin API key, con CORS. Respaldo automático.
+     3) OpenStreetMap / Nominatim — último recurso.
+   OJO: cuando el billing de Google está apagado, Places contesta REQUEST_DENIED en TODAS
+   las consultas y NO dispara gm_authFailure — por eso lo detectamos aquí a mano y
+   cambiamos de motor solos (si no, la app se queda en "No suggestions").
 ============================================================ */
 var GOOGLE_KEY = 'AIzaSyB-6nLKJ0zWabG8DWA7ShQNPj1903nvjqs';   // Restringida en Google Cloud: Websites (bettercallcenters.github.io/* + localhost:5178/*) + APIs (Maps JavaScript API, Places API).
 var CENTER = { epcad:{lat:31.7619,lng:-106.4850}, dona:{lat:32.3199,lng:-106.7637} };
+
+/* RESTRICCIÓN DURA al área de servicio (El Paso + Doña Ana juntos): nunca sugerir
+   Arlington/Dallas etc. — solo direcciones dentro de esta caja. */
+var SERVICE_BOUNDS = { west:-107.45, north:32.75, east:-106.13, south:31.58 };
+
 var googleReady=false, gAuto=null, gPlaces=null;
 function initGoogle(){
   try{
     gAuto   = new google.maps.places.AutocompleteService();
     gPlaces = new google.maps.places.PlacesService(document.createElement('div'));
     googleReady = true;
+    probeGoogle();                  // ¿hay billing? si no, apaga Google antes de la 1ª llamada
   }catch(e){ googleReady=false; }
+}
+/* Una consulta barata al cargar. Si Google viene denegado (billing apagado, key inválida o
+   cuota excedida) apagamos TODO Google: los mapas se van a Leaflet y las sugerencias a ArcGIS. */
+function probeGoogle(){
+  try{
+    gAuto.getPlacePredictions({ input:'100 main st', componentRestrictions:{country:'us'} }, function(preds,status){
+      if(googleDenied(status)) googleOff(status);
+    });
+  }catch(e){}
+}
+function googleDenied(status){
+  try{
+    var S = google.maps.places.PlacesServiceStatus;
+    return status===S.REQUEST_DENIED || status===S.OVER_QUERY_LIMIT || status===S.ERROR;
+  }catch(e){ return true; }
+}
+function googleOff(why){
+  if(window.__googleBad) return;
+  googleReady = false;
+  window.__googleBad = true;        // googleMapsOK() lo lee → los mapas usan Leaflet
+  try{ console.warn('[addr] Google Places unavailable ('+why+') → switching to ArcGIS geocoder'); }catch(e){}
 }
 window.__initGoogle = initGoogle;   // callback del script de Google
 (function loadGoogle(){
-  if(!GOOGLE_KEY) return;           // sin key → se queda con OpenStreetMap
+  if(!GOOGLE_KEY) return;           // sin key → arranca directo con ArcGIS
   var s=document.createElement('script');
   s.src='https://maps.googleapis.com/maps/api/js?key='+encodeURIComponent(GOOGLE_KEY)+'&libraries=places&callback=__initGoogle';
   s.async=true; document.head.appendChild(s);
 })();
 
-// Decide qué motor de sugerencias usar
-function runAutocomplete(q){ if(googleReady) googlePredict(q); else queryNominatim(q); }
+/* ---------- ArcGIS World Geocoder (gratis, sin llave, CORS) ---------- */
+var AG_BASE = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer';
+function agExtent(){ var B=SERVICE_BOUNDS; return B.west+','+B.south+','+B.east+','+B.north; }
+var agCtrl = null;
+function agSuggest(q, cb){
+  try{ if(agCtrl) agCtrl.abort(); }catch(e){}
+  agCtrl = new AbortController();
+  var u = AG_BASE+'/suggest?f=json&countryCode=USA&category=Address&maxSuggestions=6'
+        + '&searchExtent='+encodeURIComponent(agExtent())     // solo el área de servicio
+        + '&text='+encodeURIComponent(q);
+  fetch(u, {signal:agCtrl.signal})
+    .then(function(r){ return r.json(); })
+    .then(function(d){
+      var list = (d && d.suggestions) ? d.suggestions.filter(function(s){ return !s.isCollection; }) : [];
+      cb(list);
+    })
+    .catch(function(e){ if(e.name!=='AbortError') cb([]); });
+}
+// magicKey → dirección oficial + coordenadas + estado (TX/NM)
+function agDetails(text, magicKey, cb){
+  var u = AG_BASE+'/findAddressCandidates?f=json&outFields=*&maxLocations=1&countryCode=USA'
+        + '&magicKey='+encodeURIComponent(magicKey||'')
+        + '&singleLine='+encodeURIComponent(text||'');
+  fetch(u).then(function(r){ return r.json(); })
+    .then(function(d){ cb((d && d.candidates && d.candidates[0]) || null); })
+    .catch(function(){ cb(null); });
+}
+// "3093 Jose Ortiz Ln, El Paso, TX, 79936, USA" → {main:"3093 Jose Ortiz Ln", sub:"El Paso, TX, 79936"}
+function agToItems(sugs){
+  return (sugs||[]).map(function(s){
+    var parts = String(s.text||'').split(',').map(function(x){ return x.trim(); })
+                 .filter(function(x){ return x && x.toUpperCase()!=='USA'; });
+    return { isArcGIS:true, magicKey:s.magicKey, text:s.text,
+             main:(parts[0]||s.text), sub:parts.slice(1).join(', ') };
+  });
+}
+/* Aplica una sugerencia de ArcGIS al formulario: dirección completa, versión compacta
+   para el mensaje, coordenadas para los mapas y condado correcto (TX→EPCAD / NM→Doña Ana). */
+function applyAgChoice(it, done){
+  var fallbackFull = String(it.text||'').replace(/,\s*USA\s*$/i,'');
+  agDetails(it.text, it.magicKey, function(cand){
+    var full = fallbackFull, compact = it.main, st = '';
+    if(cand){
+      var a = cand.attributes || {};
+      full    = cand.address || full;                 // "3093 Jose Ortiz Ln, El Paso, Texas, 79936"
+      compact = a.StAddr || a.ShortLabel || compact;  // "3093 Jose Ortiz Ln"
+      st      = a.RegionAbbr || a.Region || '';       // "TX" / "NM"
+      if(cand.location) setLatLng(cand.location.y, cand.location.x);
+    }
+    $('addr').value = full;
+    state.addrCompact = compact;
+    autoRoute(st);
+    buildMsg();
+    if(done) done();
+  });
+}
+/* Token de secuencia: el agente escribe rápido y los 3 motores tardan distinto.
+   Sin esto, una respuesta lenta de una consulta VIEJA pisa las sugerencias buenas
+   (se ven aparecer y desaparecer a media llamada). Solo pinta la consulta más reciente. */
+var acSeq = 0;
+function acRender(seq, items){
+  if(seq !== acSeq) return;              // llegó tarde → ya hay una consulta más nueva
+  acItems = items; renderAC(acItems);
+}
 
-/* RESTRICCIÓN DURA al área de servicio (El Paso + Doña Ana juntos): Google ya NO puede sugerir
-   Arlington/Dallas etc. — solo direcciones dentro de esta caja. El sesgo sigue siendo el condado elegido. */
-var SERVICE_BOUNDS = { west:-107.45, north:32.75, east:-106.13, south:31.58 };
-function googlePredict(q){
-  var c = CENTER[state.county];
+function agAutocomplete(q, seq){
+  agSuggest(q, function(sugs){
+    if(seq !== acSeq) return;
+    if(sugs.length) acRender(seq, agToItems(sugs));
+    else queryNominatim(q, seq);         // último respaldo
+  });
+}
+
+// Decide qué motor usar (Google si está vivo; si no, ArcGIS)
+function runAutocomplete(q){
+  var seq = ++acSeq;
+  if(googleReady) googlePredict(q, seq); else agAutocomplete(q, seq);
+}
+
+function googlePredict(q, seq){
   gAuto.getPlacePredictions({
     input:q,
     componentRestrictions:{country:'us'},
     locationRestriction: SERVICE_BOUNDS,   // SOLO dentro del área (no Arlington/Dallas)
-    location:new google.maps.LatLng(c.lat,c.lng),
-    radius:45000,                    // ~45km alrededor del condado
     types:['address']
   }, function(preds,status){
-    if(status!==google.maps.places.PlacesServiceStatus.OK || !preds){ acItems=[]; renderAC([]); return; }
-    acItems = preds.map(function(p){
+    if(seq !== acSeq) return;
+    if(status!==google.maps.places.PlacesServiceStatus.OK || !preds || !preds.length){
+      if(googleDenied(status)) googleOff(status);
+      agAutocomplete(q, seq);              // nunca dejar al agente sin sugerencias
+      return;
+    }
+    acRender(seq, preds.map(function(p){
       var sf=p.structured_formatting||{};
       return { placeId:p.place_id, isGoogle:true, main:(sf.main_text||p.description), sub:(sf.secondary_text||'') };
-    });
-    renderAC(acItems);
+    }));
   });
 }
 
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r48-2026-08-11';
+var APP_VERSION = 'r49-2026-09-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -753,7 +858,8 @@ $('phone').addEventListener('input', buildMsg);
 ============================================================ */
 var acItems = [], acHi = -1, acTimer, acCtrl;
 
-function clearAC(){ $('acBox').classList.remove('open'); $('acBox').innerHTML=''; acItems=[]; acHi=-1; }
+// acSeq++ invalida cualquier respuesta en vuelo: si no, una sugerencia tardía vuelve a abrir la caja ya cerrada
+function clearAC(){ acSeq++; $('acBox').classList.remove('open'); $('acBox').innerHTML=''; acItems=[]; acHi=-1; }
 
 function renderAC(list){
   var box = $('acBox');
@@ -799,6 +905,9 @@ function pickAC(i){
     return;
   }
 
+  // --- Sugerencia de ArcGIS: magicKey → dirección oficial + coordenadas + estado ---
+  if(it.isArcGIS){ applyAgChoice(it, function(){ clearAC(); }); return; }
+
   // --- Sugerencia de OpenStreetMap ---
   // Muestra una versión limpia en el campo; usa la compacta ("5000 Montana Avenue") para el mensaje
   $('addr').value = it.compact ? (it.compact + (it.sub ? ', ' + it.sub : '')) : it.full;
@@ -808,7 +917,8 @@ function pickAC(i){
   clearAC(); buildMsg();
 }
 
-function queryNominatim(q){
+function queryNominatim(q, seq){
+  if(typeof seq !== 'number') seq = ++acSeq;
   if(acCtrl) acCtrl.abort();
   acCtrl = new AbortController();
   var base = 'https://nominatim.openstreetmap.org/search';
@@ -819,21 +929,25 @@ function queryNominatim(q){
     .then(function(r){ return r.json(); })
     .then(function(rows){
       if(!rows || !rows.length){
-        // reintento sin límite geográfico
-        return fetch(base+'?format=jsonv2&addressdetails=1&limit=6&countrycodes=us&q='+encodeURIComponent(q))
+        // Reintento AMPLIADO a toda el área de servicio (El Paso + Doña Ana), nunca sin límite:
+        // sin bounded=1 aquí es como se colaban sugerencias de Arlington/Dallas.
+        var B = SERVICE_BOUNDS;
+        var svc = B.west+','+B.north+','+B.east+','+B.south;
+        return fetch(base+'?format=jsonv2&addressdetails=1&limit=6&countrycodes=us&dedupe=1'+
+                     '&viewbox='+encodeURIComponent(svc)+'&bounded=1'+
+                     '&q='+encodeURIComponent(q))
           .then(function(r){return r.json();});
       }
       return rows;
     })
     .then(function(rows){
-      acItems = (rows||[]).map(function(r){
+      acRender(seq, (rows||[]).map(function(r){
         var a = r.address || {};
         var compact = compactFrom(a);
         var main = compact || (r.display_name||'').split(',').slice(0,2).join(',');
         var sub = [a.city||a.town||a.village||a.hamlet, a.state, a.postcode].filter(Boolean).join(', ');
         return { full: r.display_name, compact: compact, main: main, sub: sub, lat: r.lat, lon: r.lon, stateName: a.state };
-      });
-      renderAC(acItems);
+      }));
     })
     .catch(function(err){ if(err.name!=='AbortError'){ /* silencio */ } });
 }
@@ -2878,34 +2992,57 @@ function trShowSuggest(addr){
   $('trDismiss').onclick = function(){ el.style.display = 'none'; };
   trPredictReal(addr);
 }
-// Trae las opciones REALES de Google Places para lo que se oyó y las muestra como botones
+// Trae las opciones REALES (Google o ArcGIS) para lo que se oyó y las muestra como botones
 function trPredictReal(addr){
   var list = document.getElementById('trPredList');
-  if(!(window.google && window.google.maps && google.maps.places && gAuto)){
-    if(list) list.innerHTML = '<div style="font-size:13px;color:#166534">Google isn\'t ready — use it as heard or type it.</div>';
-    return;
-  }
-  var c = CENTER[state.county] || CENTER.epcad;
+  if(!list) return;
   var token = addr;
-  gAuto.getPlacePredictions({
-    input: addr, componentRestrictions:{country:'us'},
-    locationRestriction: SERVICE_BOUNDS,   // solo el área de servicio: calles que SUENAN parecido pero de AQUÍ
-    location:new google.maps.LatLng(c.lat,c.lng), radius:60000, types:['address']
-  }, function(preds, status){
-    if(!list || token!==trSuggestAddr) return;   // llegó otra detección → ignora
-    if(status!==google.maps.places.PlacesServiceStatus.OK || !preds || !preds.length){
-      list.innerHTML = '<div style="font-size:13px;color:#166534">No Google match — use it as heard or type it.</div>'; return;
+
+  function paint(options){
+    if(token !== trSuggestAddr) return;          // llegó otra detección → ignora ésta
+    if(!options.length){
+      list.innerHTML = '<div style="font-size:13px;color:#166534">No match found — use it as heard or type it.</div>';
+      return;
     }
     list.innerHTML = '';
-    preds.slice(0,4).forEach(function(p){
+    options.slice(0,4).forEach(function(o){
       var b = document.createElement('button');
       b.className = 'btn ghost sm';
       b.style.cssText = 'text-align:left;width:100%;white-space:normal;line-height:1.35';
-      b.innerHTML = '📍 ' + esc(p.description);
-      b.onclick = function(){ pickTrPrediction(p); };
+      b.innerHTML = '📍 ' + esc(o.label);
+      b.onclick = function(){ o.pick(); };
       list.appendChild(b);
     });
+  }
+
+  function useArcGIS(){
+    agSuggest(addr, function(sugs){
+      paint(agToItems(sugs).map(function(it){
+        return { label: String(it.text||'').replace(/,\s*USA\s*$/i,''),
+                 pick: function(){ pickTrArcGIS(it); } };
+      }));
+    });
+  }
+
+  if(!(googleReady && gAuto)){ useArcGIS(); return; }
+  gAuto.getPlacePredictions({
+    input: addr, componentRestrictions:{country:'us'},
+    locationRestriction: SERVICE_BOUNDS,   // solo el área de servicio: calles que SUENAN parecido pero de AQUÍ
+    types:['address']
+  }, function(preds, status){
+    if(status!==google.maps.places.PlacesServiceStatus.OK || !preds || !preds.length){
+      if(googleDenied(status)) googleOff(status);
+      useArcGIS(); return;
+    }
+    paint(preds.map(function(p){
+      return { label:p.description, pick:function(){ pickTrPrediction(p); } };
+    }));
   });
+}
+// El agente elige una opción de ArcGIS → llena el campo con la versión oficial + busca dueño
+function pickTrArcGIS(it){
+  $('addrSuggest').style.display = 'none';
+  applyAgChoice(it, function(){ setRole('owner'); buildMsg(); searchOwner(); });
 }
 // El agente elige una dirección REAL de la lista → llena el campo con la versión oficial + busca dueño
 function pickTrPrediction(p){
@@ -2938,17 +3075,33 @@ function pickTrAddress(addr){
   searchOwner();
 }
 
-// Resuelve con Places (autorizado) para tener condado + coords listos ANTES de confirmar
+// Resuelve la dirección (Google o ArcGIS) para tener condado + coords listos ANTES de confirmar
 function trResolve(addr){
-  if(!(window.google && window.google.maps && google.maps.places && gAuto && gPlaces)) return;
+  // Respaldo gratis cuando Google no está disponible
+  function agFallback(){
+    agSuggest(addr, function(sugs){
+      var it = agToItems(sugs)[0]; if(!it) return;
+      agDetails(it.text, it.magicKey, function(cand){
+        if(!cand) return;
+        var a = cand.attributes || {};
+        if(cand.location) setLatLng(cand.location.y, cand.location.x);
+        trResolvedCompact = a.StAddr || a.ShortLabel || trResolvedCompact;
+        autoRoute(a.RegionAbbr || a.Region || '');
+        var t=document.getElementById('trSuggestTxt'); if(t && trResolvedCompact) t.textContent = trResolvedCompact;
+      });
+    });
+  }
+  if(!(googleReady && gAuto && gPlaces)){ agFallback(); return; }
   try{
-    var c = CENTER[state.county] || CENTER.epcad;
     gAuto.getPlacePredictions({
       input: addr, componentRestrictions:{country:'us'},
       locationRestriction: SERVICE_BOUNDS,   // solo el área de servicio
-      location:new google.maps.LatLng(c.lat,c.lng), radius:60000, types:['address']
+      types:['address']
     }, function(preds, status){
-      if(status!==google.maps.places.PlacesServiceStatus.OK || !preds || !preds.length) return;
+      if(status!==google.maps.places.PlacesServiceStatus.OK || !preds || !preds.length){
+        if(googleDenied(status)) googleOff(status);
+        agFallback(); return;
+      }
       gPlaces.getDetails({ placeId: preds[0].place_id, fields:['geometry','address_components'] }, function(pl){
         if(!pl) return;
         var loc = pl.geometry && pl.geometry.location; if(loc) setLatLng(loc.lat(), loc.lng());
