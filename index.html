@@ -134,6 +134,7 @@
 <style>
   .mapsGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px}   /* lado a lado, compactos dentro de Call Info */
   .mapBox{height:180px;background:#e2e8f0;border-radius:10px;overflow:hidden}
+  .mapWide{grid-column:1/-1}   /* la foto de enfrente va a todo lo ancho, debajo de los 2 mapas */
   #houseMapZone{height:520px}   /* el mapa de zona un poco más alto para ver las calles principales */
   .mapTitle{font-size:13px;font-weight:700;color:var(--muted);margin:0 0 6px}
   .leaflet-container{border-radius:12px;font:inherit}
@@ -318,6 +319,10 @@
           <div>
             <div class="mapTitle">🗺️ Main streets</div>
             <div id="houseMapZone" class="mapBox"></div>
+          </div>
+          <div class="mapWide">
+            <div class="mapTitle">🏠 Front view (Street View)</div>
+            <div id="houseStreetView" class="mapBox"></div>
           </div>
         </div>
       </div>
@@ -648,7 +653,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r52-2026-09-15';
+var APP_VERSION = 'r53-2026-09-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -2121,11 +2126,29 @@ function showLeafletMaps(){
   setTimeout(function(){ try{ lmapSat.invalidateSize(); lmapZone.invalidateSize(); }catch(e){} }, 80);
 }
 
+/* FOTO DE ENFRENTE (Street View) — sin API key y sin billing.
+   Usa el embed clásico de Google Maps (output=svembed), que es el mismo que ve el agente
+   en google.com/maps. No depende de la llave (que hoy está sin billing) ni de Places.
+   Solo funciona dentro de un <iframe>; si la casa no tiene foto, Google enseña su propio
+   aviso dentro del recuadro. */
+function showStreetView(){
+  var box=$('houseStreetView'); if(!box) return;
+  if(lastLat==null || lastLng==null){ box.innerHTML=''; box.removeAttribute('data-at'); return; }
+  var at = lastLat+','+lastLng;
+  if(box.getAttribute('data-at')===at) return;      // misma casa → no recargar el iframe
+  box.setAttribute('data-at', at);
+  box.innerHTML = '<iframe title="Street View" loading="lazy" allowfullscreen'
+    + ' referrerpolicy="no-referrer-when-downgrade"'
+    + ' style="width:100%;height:100%;border:0;display:block"'
+    + ' src="https://maps.google.com/maps?q=&layer=c&cbll='+encodeURIComponent(at)+'&cbp=11,0,0,0,0&output=svembed"></iframe>';
+}
+
 // Limpia y oculta los mapas (marcadores/etiquetas de calles + coords), no solo esconder
 function clearMaps(){
   try{ clearZoneLabels(); }catch(e){}
   var zs=$('zoneStreets'); if(zs) zs.innerHTML='';
   var mc=$('mapCard'); if(mc) mc.style.display='none';
+  var sv=$('houseStreetView'); if(sv){ sv.innerHTML=''; sv.removeAttribute('data-at'); }
   lastLat=null; lastLng=null;
 }
 function setLatLng(lat,lng){
@@ -2136,6 +2159,7 @@ function setLatLng(lat,lng){
   $('gmapsBtn').href = 'https://www.google.com/maps/place/'+lat+','+lng+'/@'+lat+','+lng+',20z/data=!3m1!1e3';
   if(googleMapsOK()) showGoogleMaps();   // sharp Google maps
   else showLeafletMaps();                // free fallback
+  showStreetView();                      // foto de enfrente de la casa
 }
 
 /* ============================================================
