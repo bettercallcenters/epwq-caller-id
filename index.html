@@ -321,7 +321,7 @@
             <div id="houseMapZone" class="mapBox"></div>
           </div>
           <div class="mapWide">
-            <div class="mapTitle">🏠 Front view (Street View)</div>
+            <div class="mapTitle">🏠 Front view (Street View) <span style="font-weight:500;text-transform:none">— check the street name on the photo; brand-new streets may show the closest one instead</span></div>
             <div id="houseStreetView" class="mapBox"></div>
           </div>
         </div>
@@ -653,7 +653,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r53-2026-09-15';
+var APP_VERSION = 'r54-2026-09-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
