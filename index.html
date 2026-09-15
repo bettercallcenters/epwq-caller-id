@@ -531,11 +531,13 @@ function probeGoogle(){
     });
   }catch(e){}
 }
+/* Solo REQUEST_DENIED es PERMANENTE (billing apagado, key inválida, API no habilitada).
+   OVER_QUERY_LIMIT y ERROR son pasajeros: para ésos basta con usar ArcGIS en ESA consulta
+   (ya pasa, porque cualquier estado != OK cae al respaldo). Apagar Google por un throttle
+   dejaba además los mapas en Leaflet el resto de la sesión, sin forma de recuperarse. */
 function googleDenied(status){
-  try{
-    var S = google.maps.places.PlacesServiceStatus;
-    return status===S.REQUEST_DENIED || status===S.OVER_QUERY_LIMIT || status===S.ERROR;
-  }catch(e){ return true; }
+  try{ return status === google.maps.places.PlacesServiceStatus.REQUEST_DENIED; }
+  catch(e){ return false; }
 }
 function googleOff(why){
   if(window.__googleBad) return;
@@ -597,11 +599,21 @@ function agToItems(sugs){
              main:(parts[0]||s.text), sub:parts.slice(1).join(', ') };
   });
 }
+/* Contador de "generación" del formulario: sube en cada reset (llamada nueva o Clear all).
+   Sirve para que una respuesta LENTA de la llamada anterior no escriba en el formulario
+   del cliente que sigue. */
+var formGen = 0;
+function bumpFormGen(){ formGen++; }
+
 /* Aplica una sugerencia de ArcGIS al formulario: dirección completa, versión compacta
    para el mensaje, coordenadas para los mapas y condado correcto (TX→EPCAD / NM→Doña Ana). */
 function applyAgChoice(it, done){
   var fallbackFull = String(it.text||'').replace(/,\s*USA\s*$/i,'');
+  var gen = formGen;                       // generación en la que el agente eligió
   agDetails(it.text, it.magicKey, function(cand){
+    // Entró otra llamada (o se limpió todo) mientras ArcGIS contestaba → no pisar el formulario
+    // nuevo con la dirección del cliente anterior.
+    if(gen !== formGen) return;
     var full = fallbackFull, compact = it.main, st = '';
     if(cand){
       var a = cand.attributes || {};
@@ -663,7 +675,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r55-2026-09-15';
+var APP_VERSION = 'r56-2026-09-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1056,9 +1068,16 @@ var GIS = {
   epcad: { url:'https://gis.elpasotexas.gov/arcgis/rest/services/CachedServices/Parcels_Uncached/FeatureServer/0/query',
            owner:'FILE_AS_NA', addr:'SITUS_ADDR',           // SITUS_ADDR lo arma norm(), no existe en el servicio
            numField:'SITUS_NUM', streetField:'SITUS_STRE',
-           fields:['FILE_AS_NA','SITUS_NUM','SITUS_STRE','SITUS_CITY','SITUS_ZIP','EXEMPTIONS','PROP_ID','YR_BLT','LEGAL_DESC','ABS_SUBDV'],
+           // OJO: SITUS_DIR NO es un prefijo direccional — en esta capa guarda el TIPO de calle
+           // (LN, AVE, DR). Sin él la ficha enseñaba "13849 Paseo De Gloria" en vez de "...Ave".
+           fields:['FILE_AS_NA','SITUS_NUM','SITUS_DIR','SITUS_STRE','SITUS_UNIT','SITUS_CITY','SITUS_ZIP','EXEMPTIONS','PROP_ID','YR_BLT','LEGAL_DESC','ABS_SUBDV'],
            norm:function(a){
-             a.SITUS_ADDR = ((a.SITUS_NUM||'')+' '+(a.SITUS_STRE||'')).trim();
+             // El orden real en el padrón es NÚMERO + CALLE + TIPO ("3093 JOSE ORTIZ LN").
+             // parseHouseStreet ya le quita el sufijo a lo que teclea el agente, así que el
+             // desempate por coincidencia exacta de render() sigue funcionando con o sin tipo.
+             var parts=[a.SITUS_NUM, a.SITUS_STRE, a.SITUS_DIR, a.SITUS_UNIT];
+             a.SITUS_ADDR = parts.map(function(p){ return String(p==null?'':p).trim(); })
+                                 .filter(Boolean).join(' ').replace(/\s+/g,' ').trim();
              a.CITY = a.SITUS_CITY || '';
              // HOMESTEAD = exención de vivienda: si trae valor, el dueño VIVE ahí (no es renta) → la señal
              // más directa para saber si la persona al teléfono es el dueño-habitante.
@@ -1181,7 +1200,8 @@ function ownerActionRow(hs, which){
   if(which!=='dona')
     links += '<a class="btn ghost sm" href="'+esc(epcadSearchUrl(hs))+'" target="_blank" rel="noopener">↗ Open EPCAD (El Paso)</a>';
   if(which!=='epcad')
-    links += '<a class="btn ghost sm" href="'+esc(donaAssessorUrl(hs))+'" target="_blank" rel="noopener">↗ Open Doña Ana assessor</a>';
+    // El aviso del login importa: la liga NO enseña la ficha, cae en una pantalla de acceso.
+    links += '<a class="btn ghost sm" href="'+esc(donaAssessorUrl(hs))+'" target="_blank" rel="noopener">↗ Open Doña Ana assessor <span style="font-weight:500">(needs their guest login)</span></a>';
   return '<div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:12px">'
        + links
        + '<button class="btn ghost sm" data-act="usp">🔎 USPhonebook</button>'
@@ -1290,7 +1310,10 @@ function fetchCountyOwner(hs){
         .then(function(j){
           // Si el condado quitó un campo, ArcGIS tumba la consulta ENTERA con 400. Reintenta
           // con lo mínimo: mejor el dueño sin los datos extra que ningún dueño.
-          if(j && j.error && !minimal) return hit(c, true);
+          if(j && j.error){
+            if(!minimal) return hit(c, true);
+            return { cfg:c, feats:null };   // FALLÓ; no es "no existe esa casa"
+          }
           return { cfg:c, feats:(j&&j.features)||[] };
         })
         .catch(function(){ return { cfg:c, feats:null }; });        // null = el servicio falló
@@ -1299,14 +1322,20 @@ function fetchCountyOwner(hs){
       var r={ key:key, cfg:c, feats:gisNorm(c, feats||[]) };
       ownerCache[ck]=r; return r;
     }
+    /* "Se cayó el servicio" NO es lo mismo que "esa casa no existe".
+       pack() guarda en ownerCache para toda la sesión, así que si cacheamos [] tras una caída
+       el agente ve "no está en los registros del condado" y volver a intentar ya no sirve.
+       Solo se cachea cuando el servicio SÍ contestó y de verdad no hay filas. */
+    function failed(){ return { key:key, cfg:cfg, feats:[], failed:true }; }
     function fromCounty(){
       return hit(cfg).then(function(a){
         if(a.feats && a.feats.length) return pack(a.cfg, a.feats);
-        if(!cfg.backup) return (a.feats===null) ? { key:key, cfg:cfg, feats:[], failed:true } : pack(cfg, []);
+        if(!cfg.backup) return (a.feats===null) ? failed() : pack(cfg, []);
         // La capa nueva no la tiene (o se cayó) → reintenta con la vieja antes de rendirse
         return hit(cfg.backup).then(function(b){
           if(b.feats && b.feats.length) return pack(b.cfg, b.feats);
-          if(a.feats===null && b.feats===null) return { key:key, cfg:cfg, feats:[], failed:true };
+          // Si CUALQUIERA de las dos se cayó, no podemos afirmar que la casa no existe
+          if(a.feats===null || b.feats===null) return failed();
           return pack(cfg, []);
         });
       });
@@ -1435,10 +1464,17 @@ function streetFallback(hs){
       /* El GIS público es una FOTO del padrón y va atrasada: los fraccionamientos NUEVOS
          todavía no están en la capa, aunque EPCAD en vivo sí los tenga (ej. 13849 Paseo de
          Gloria Ave → SANCHEZ ADRIAN E). Antes esto era un callejón sin salida que además
-         mandaba a Doña Ana; ahora cargamos la búsqueda EN VIVO de EPCAD aquí mismo. */
+         mandaba a Doña Ana; ahora cargamos la búsqueda EN VIVO de EPCAD aquí mismo.
+         OJO: EPCAD es de TEXAS. Para una dirección de Nuevo México cargar ese iframe es
+         enseñarle al agente el condado equivocado, así que ahí no se carga. */
+      var isTx = (state.county !== 'dona');
       box.innerHTML='<div style="font-size:14px;color:#991b1b;font-weight:700">❌ <b>'+esc(titleCaseName((hs.house+' '+hs.street).trim()))+'</b> isn\'t in the El Paso / Doña Ana GIS snapshot.</div>'
-        + '<div style="font-size:13px;color:var(--muted);margin-top:6px">The GIS layer lags behind on new construction. The live EPCAD search is loading below — read the owner there. If it\'s empty too, confirm the street spelling with the customer.</div>'
+        + '<div style="font-size:13px;color:var(--muted);margin-top:6px">'
+        + (isTx ? 'The GIS layer lags behind on new construction. The live EPCAD search is loading below — read the owner there. If it\'s empty too, confirm the street spelling with the customer.'
+                : 'The GIS layer lags behind on new construction. Open the Doña Ana assessor below, or confirm the street spelling with the customer.')
+        + '</div>'
         + ownerActionRow(hs,'both');
+      if(!isTx) return;                       // NM → no abrir EPCAD (Texas) en el panel
       var liveUrl = epcadSearchUrl(hs);
       $('ownerFrameCrop').style.display=''; $('ownerFrame').src = liveUrl;
       $('ownerPanelOpen').href = liveUrl; $('ownerPanelOpen').style.display='';
@@ -1453,8 +1489,13 @@ function streetFallback(hs){
        + (r.hs?' <span style="color:#1e40af;font-size:11px;font-weight:800">🏡 lives here</span>':'')
        + '<div style="color:var(--muted);font-size:12px">'+esc(r.owner)+'</div></div>';
     });
-    // El assessor debe ser el del condado donde SÍ apareció la calle, no siempre Doña Ana
-    h+='</div>'+ownerActionRow(hs, rows[0].county==='epcad' ? 'epcad' : 'dona');
+    /* El assessor debe ser el del condado donde SÍ apareció la calle, no siempre Doña Ana.
+       Y si la MISMA calle existe en los dos condados (pasa seguido: Solano, Mesa…), la lista
+       trae casas de ambos, así que hay que ofrecer los dos — no solo el del primer renglón,
+       que solo ganó por tener el número más parecido. */
+    var counties={}; rows.forEach(function(r){ counties[r.county]=1; });
+    var which = (counties.epcad && counties.dona) ? 'both' : (counties.epcad ? 'epcad' : 'dona');
+    h+='</div>'+ownerActionRow(hs, which);
     box.innerHTML=h;
   });
 }
@@ -2878,6 +2919,7 @@ function secondCallNotice(ex){
 // opts.force = el agente lo pidió a mano ("Clear all") → se salta el blindaje.
 function resetForNewCall(opts){
   opts = opts || {};
+  bumpFormGen();      // invalida respuestas en vuelo de la llamada anterior
   // Capa 1: una captura SIN ENTREGAR no se borra sola JAMÁS por un TIMBRE — solo la borra:
   // (a) CONTESTAR una llamada de otra persona (opts.answered — regla de Hector), (b) haberla
   // entregado ya (captureSent) al entrar la siguiente, o (c) el borrado manual (force).
