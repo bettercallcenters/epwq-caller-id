@@ -648,7 +648,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r50-2026-09-15';
+var APP_VERSION = 'r52-2026-09-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1029,18 +1029,78 @@ $('ownerPanelClose').addEventListener('click', function(){ $('ownerPanel').style
 
 /* ===== Dueño automático desde los GIS públicos del condado (sin Cloudflare, se leen del navegador) =====
    El Paso: EPParcels (NAMEREAL/LOCADDRESS). Doña Ana: Parcels (OWNERNAME/SITUSADDRS). Ambos con CORS. */
+/* CAPA DE EL PASO — por qué cambió:
+   La vieja "EPParcels" es una FOTO atrasada del padrón (391k parcelas) y le faltan los
+   fraccionamientos nuevos: 13849 Paseo de Gloria Ave (construida en 2023) no existe ahí
+   por ninguna vía (LOCADDRESS, STRNUM/STREET, PIDN ni PropID), aunque EPCAD en vivo sí la
+   tiene. La capa "Parcels_Uncached" es la de EPCAD (407k parcelas) y sí la trae
+   (SANCHEZ ADRIAN E). Guarda la dirección PARTIDA en SITUS_NUM + SITUS_STRE, así que
+   norm() arma SITUS_ADDR y traduce EXEMPTIONS → HOMESTEAD para el resto del código.
+   Si esa capa falla o no encuentra nada, se reintenta con la vieja (backup). */
 var GIS = {
-  epcad: { url:'https://gis.elpasotexas.gov/arcgis/rest/services/EPParcels/FeatureServer/0/query', owner:'NAMEREAL', addr:'LOCADDRESS',
-           // HOMESTEAD = exención de vivienda: si trae valor, el dueño VIVE ahí (no es renta) → la señal
-           // más directa para saber si la persona al teléfono es el dueño-habitante.
-           extra:['HOMESTEAD','PIDN','LEGAL_DESC','Subdivision'], label:'El Paso county records' },
+  epcad: { url:'https://gis.elpasotexas.gov/arcgis/rest/services/CachedServices/Parcels_Uncached/FeatureServer/0/query',
+           owner:'FILE_AS_NA', addr:'SITUS_ADDR',           // SITUS_ADDR lo arma norm(), no existe en el servicio
+           numField:'SITUS_NUM', streetField:'SITUS_STRE',
+           fields:['FILE_AS_NA','SITUS_NUM','SITUS_STRE','SITUS_CITY','SITUS_ZIP','EXEMPTIONS','PROP_ID','YR_BLT','LEGAL_DESC','ABS_SUBDV'],
+           norm:function(a){
+             a.SITUS_ADDR = ((a.SITUS_NUM||'')+' '+(a.SITUS_STRE||'')).trim();
+             a.CITY = a.SITUS_CITY || '';
+             // HOMESTEAD = exención de vivienda: si trae valor, el dueño VIVE ahí (no es renta) → la señal
+             // más directa para saber si la persona al teléfono es el dueño-habitante.
+             a.HOMESTEAD = /\bHS\b/i.test(String(a.EXEMPTIONS||'')) ? 'HS' : '';
+             return a;
+           },
+           backup:{ url:'https://gis.elpasotexas.gov/arcgis/rest/services/EPParcels/FeatureServer/0/query',
+                    owner:'NAMEREAL', addr:'LOCADDRESS',
+                    fields:['NAMEREAL','LOCADDRESS','HOMESTEAD','PIDN','LEGAL_DESC','Subdivision'],
+                    label:'El Paso county records' },
+           label:'El Paso county records' },
   dona:  { url:'https://gis.donaana.gov/server/rest/services/Parcels/FeatureServer/0/query',       owner:'OWNERNAME', addr:'SITUSADDRS',
            // Los mismos datos que la ficha del assessor (cuenta, parcela, dirección postal del dueño,
            // tax area, valores, terreno) — pero sin login ni sesión: se leen del GIS público.
-           extra:['CITY','ZIP','STATE','ACCOUNTNUMBER','PARCELNUMBER','MAILADDR1','MAILADDR2','DEEDHOLDER','CAREOFNAME','TAXAREA','NEIGHBORHOOD','SCHOOLDISTRICT','TOTALACRES','TOTALSQFT','LANDVALUE','BLDGVALUE','TOTALVALUE','LOT','BLOCK','SUBNAME'],
+           // OJO: NO pedir TOTALVALUE — Doña Ana lo quitó de la capa y un solo campo inexistente
+           // hace que TODA la consulta devuelva 400 ("Unable to complete operation"), así que
+           // durante un tiempo ningún dueño de Nuevo México se autocompletaba. El valor total
+           // se calcula abajo como LANDVALUE + BLDGVALUE.
+           extra:['CITY','ZIP','STATE','ACCOUNTNUMBER','PARCELNUMBER','MAILADDR1','MAILADDR2','DEEDHOLDER','CAREOFNAME','TAXAREA','NEIGHBORHOOD','SCHOOLDISTRICT','TOTALACRES','TOTALSQFT','LANDVALUE','BLDGVALUE','LOT','BLOCK','SUBNAME'],
+           norm:function(a){
+             var l=Number(a.LANDVALUE), b=Number(a.BLDGVALUE);
+             a.TOTALVALUE = (isNaN(l)?0:l) + (isNaN(b)?0:b) || '';
+             return a;
+           },
            label:'Doña Ana county records' }
 };
 function titleCaseName(s){ return String(s||'').toLowerCase().replace(/\b([a-z])/g, function(m,c){ return c.toUpperCase(); }); }
+
+/* Helpers de las capas GIS: cada servicio tiene campos distintos (y el de El Paso trae la
+   dirección partida), así que se piden y se normalizan aquí en un solo lugar. */
+function gisOutFields(cfg){
+  return (cfg.fields ? cfg.fields : [cfg.owner, cfg.addr].concat(cfg.extra||[])).join(',');
+}
+// Lo MÍNIMO para poder dar un dueño, por si el condado quitó algún campo extra
+function gisMinFields(cfg){
+  return (cfg.numField ? [cfg.owner,cfg.numField,cfg.streetField] : [cfg.owner,cfg.addr]).join(',');
+}
+function gisNorm(cfg, feats){
+  if(cfg && cfg.norm) (feats||[]).forEach(function(f){ if(f && f.attributes) cfg.norm(f.attributes); });
+  return feats || [];
+}
+// Dirección de la casa: unas capas la guardan completa, otras en número + calle
+function gisHouseWhere(cfg, hs, keyWords){
+  var house=String(hs.house).replace(/'/g,"''");
+  if(cfg.numField){
+    var w=cfg.numField+" = '"+house+"'";
+    keyWords.slice(0,2).forEach(function(x){ w+=" AND "+cfg.streetField+" LIKE '%"+x+"%'"; });
+    return w;
+  }
+  var A=cfg.addr, w2=A+" LIKE '"+house+" %'";
+  keyWords.slice(0,2).forEach(function(x){ w2+=" AND "+A+" LIKE '%"+x+"%'"; });
+  return w2;
+}
+function gisStreetWhere(cfg, words){
+  var F = cfg.numField ? cfg.streetField : cfg.addr;
+  return words.map(function(x){ return F+" LIKE '%"+x+"%'"; }).join(' AND ');
+}
 
 /* ── ¿LA PERSONA AL TELÉFONO ES EL DUEÑO? ─────────────────────────────────────
    Compara el nombre de quien llama (USPhonebook / caller ID de RingCentral) con el
@@ -1161,14 +1221,11 @@ function fetchCountyOwner(hs){
   // Número de casa ANCLADO al inicio (eso sí puede usar índice) + como mucho las
   // dos palabras más largas de la calle. Menos predicados y mucho más selectivos.
   function whereFor(cfg){
-    var A=cfg.addr, house=String(hs.house).replace(/'/g,"''");
     var all=String(hs.street||'').toUpperCase().replace(/'/g,"''").split(/\s+/).filter(Boolean);
     var key=all.filter(function(w){ return w.length>2 && !ST_NOISE[w]; });
     if(!key.length) key=all.slice();                       // calles tipo "1ST" → nunca dejarlo vacío
     key.sort(function(a,b){ return b.length-a.length; });
-    var w=A+" LIKE '"+house+" %'";
-    key.slice(0,2).forEach(function(x){ w+=" AND "+A+" LIKE '%"+x+"%'"; });
-    return w;
+    return gisHouseWhere(cfg, hs, key);
   }
   function withTimeout(url, ms, opts){
     var ctl = (typeof AbortController!=='undefined') ? new AbortController() : null;
@@ -1193,20 +1250,51 @@ function fetchCountyOwner(hs){
     var cfg=GIS[key], ck=key+'|'+token;
     if(ownerCache[ck]) return Promise.resolve(ownerCache[ck]);
 
+    /* El CRM y las dos capas de El Paso devuelven esquemas distintos. Elige el cfg que
+       corresponde a lo que REALMENTE llegó; si no, se leería el dueño de un campo
+       inexistente y saldría vacío. */
+    function cfgFor(feats){
+      var a=(feats && feats[0] && feats[0].attributes) || null;
+      if(!a) return cfg;
+      if(cfg.backup && !(cfg.owner in a) && (cfg.backup.owner in a)) return cfg.backup;
+      return cfg;
+    }
     function keep(feats){
-      var r={ key:key, cfg:cfg, feats:feats||[] };
+      var c=cfgFor(feats);
+      var r={ key:key, cfg:c, feats:gisNorm(c, feats||[]) };
       ownerCache[ck]=r;                                    // solo se cachea lo que sí respondió
       return r;
     }
-    function fromCounty(){
-      var out=[cfg.owner,cfg.addr].concat(cfg.extra||[]).join(',');
-      // 25 y no 10: con menos predicados vuelven más parcelas, y la de verdad se
-      // elige abajo por prefijo exacto. Cortar en 10 podría dejarla fuera.
-      var url=cfg.url+'?where='+encodeURIComponent(whereFor(cfg))+'&outFields='+encodeURIComponent(out)+'&returnGeometry=false&resultRecordCount=25&f=json';
+    // 25 y no 10: con menos predicados vuelven más parcelas, y la de verdad se
+    // elige abajo por prefijo exacto. Cortar en 10 podría dejarla fuera.
+    function hit(c, minimal){
+      var flds = minimal ? gisMinFields(c) : gisOutFields(c);
+      var url=c.url+'?where='+encodeURIComponent(whereFor(c))+'&outFields='+encodeURIComponent(flds)+'&returnGeometry=false&resultRecordCount=25&f=json';
       return withTimeout(url, OWNER_TIMEOUT_MS)
         .then(function(r){ return r.json(); })
-        .then(function(j){ return keep((j&&j.features)||[]); })
-        .catch(function(){ return { key:key, cfg:cfg, feats:[], failed:true }; });
+        .then(function(j){
+          // Si el condado quitó un campo, ArcGIS tumba la consulta ENTERA con 400. Reintenta
+          // con lo mínimo: mejor el dueño sin los datos extra que ningún dueño.
+          if(j && j.error && !minimal) return hit(c, true);
+          return { cfg:c, feats:(j&&j.features)||[] };
+        })
+        .catch(function(){ return { cfg:c, feats:null }; });        // null = el servicio falló
+    }
+    function pack(c, feats){
+      var r={ key:key, cfg:c, feats:gisNorm(c, feats||[]) };
+      ownerCache[ck]=r; return r;
+    }
+    function fromCounty(){
+      return hit(cfg).then(function(a){
+        if(a.feats && a.feats.length) return pack(a.cfg, a.feats);
+        if(!cfg.backup) return (a.feats===null) ? { key:key, cfg:cfg, feats:[], failed:true } : pack(cfg, []);
+        // La capa nueva no la tiene (o se cayó) → reintenta con la vieja antes de rendirse
+        return hit(cfg.backup).then(function(b){
+          if(b.feats && b.feats.length) return pack(b.cfg, b.feats);
+          if(a.feats===null && b.feats===null) return { key:key, cfg:cfg, feats:[], failed:true };
+          return pack(cfg, []);
+        });
+      });
     }
 
     var tok = (typeof crmToken==='function') ? crmToken() : '';
@@ -1216,7 +1304,13 @@ function fetchCountyOwner(hs){
           + '&house='+encodeURIComponent(hs.house)+'&street='+encodeURIComponent(hs.street);
     return withTimeout(q, CRM_PARCEL_TIMEOUT_MS, { headers:{ 'Authorization':'Bearer '+tok } })
       .then(function(r){ if(!r.ok) throw new Error('crm '+r.status); return r.json(); })
-      .then(function(j){ if(!j || !j.ok) throw new Error('crm body'); return keep(j.features||[]); })
+      .then(function(j){
+        if(!j || !j.ok) throw new Error('crm body');
+        // El CRM consulta la capa VIEJA de El Paso: si no trae nada, puede ser una casa
+        // nueva que solo está en la capa de EPCAD → pregunta directo al condado.
+        if(!j.features || !j.features.length) return fromCounty();
+        return keep(j.features);
+      })
       .catch(function(e){
         // Falla RÁPIDA (el CRM no está, CORS, 5xx, ruta aún no desplegada) → vale la pena
         // preguntarle al condado. Si en cambio se AGOTÓ el tiempo, es que el condado va
@@ -1291,15 +1385,24 @@ function streetFallback(hs){
   var box=$('ownerGis'); if(!box) return;
   box.innerHTML='<div style="color:var(--muted);font-size:14px">🔎 Looking for other houses on <b>'+esc(titleCaseName(hs.street))+'</b>…</div>';
   function byStreet(key){
-    var cfg=GIS[key], A=cfg.addr;
+    var cfg=GIS[key];
     var words=String(hs.street||'').toUpperCase().replace(/'/g,"''").split(/\s+/).filter(function(w){ return w.length>2; });
     if(!words.length) return Promise.resolve({key:key,cfg:cfg,feats:[]});
-    var w=words.map(function(x){ return A+" LIKE '%"+x+"%'"; }).join(' AND ');
-    var out=[cfg.owner,cfg.addr].concat(key==='dona'?['CITY','ZIP']:['HOMESTEAD']).join(',');
-    return fetch(cfg.url+'?where='+encodeURIComponent(w)+'&outFields='+encodeURIComponent(out)+'&returnGeometry=false&resultRecordCount=60&f=json')
-      .then(function(r){ return r.json(); })
-      .then(function(j){ return {key:key,cfg:cfg,feats:(j&&j.features)||[]}; })
-      .catch(function(){ return {key:key,cfg:cfg,feats:[]}; });
+    function hitStreet(c, minimal){
+      var out = minimal ? gisMinFields(c)
+                        : (c.fields ? c.fields : [c.owner,c.addr].concat(key==='dona'?['CITY','ZIP']:['HOMESTEAD'])).join(',');
+      return fetch(c.url+'?where='+encodeURIComponent(gisStreetWhere(c,words))+'&outFields='+encodeURIComponent(out)+'&returnGeometry=false&resultRecordCount=60&f=json')
+        .then(function(r){ return r.json(); })
+        .then(function(j){
+          if(j && j.error && !minimal) return hitStreet(c, true);   // campo inexistente → reintenta mínimo
+          return {key:key,cfg:c,feats:gisNorm(c,(j&&j.features)||[])};
+        })
+        .catch(function(){ return {key:key,cfg:c,feats:[]}; });
+    }
+    return hitStreet(cfg).then(function(a){
+      if(a.feats.length || !cfg.backup) return a;
+      return hitStreet(cfg.backup);     // la capa nueva no tiene esa calle → prueba la vieja
+    });
   }
   Promise.all([byStreet('epcad'), byStreet('dona')]).then(function(res){
     var rows=[];
