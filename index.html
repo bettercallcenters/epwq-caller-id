@@ -554,20 +554,30 @@ window.__initGoogle = initGoogle;   // callback del script de Google
 /* ---------- ArcGIS World Geocoder (gratis, sin llave, CORS) ---------- */
 var AG_BASE = 'https://geocode.arcgis.com/arcgis/rest/services/World/GeocodeServer';
 function agExtent(){ var B=SERVICE_BOUNDS; return B.west+','+B.south+','+B.east+','+B.north; }
-var agCtrl = null;
-function agSuggest(q, cb){
-  try{ if(agCtrl) agCtrl.abort(); }catch(e){}
-  agCtrl = new AbortController();
+/* UN AbortController POR FLUJO, no uno solo compartido.
+   Tres flujos distintos llaman agSuggest: lo que el agente ESCRIBE ('addr'), lo que el
+   transcript DETECTA ('transcript') y la resolución en 2° plano ('resolve'). Con un solo
+   controller se cancelaban ENTRE SÍ, y como al abortar no se llama cb(), la continuación
+   moría en silencio: no se pintaban sugerencias, no corría el respaldo de Nominatim y el
+   panel verde se quedaba pegado en "buscando…". Pasa justo cuando el cliente dice un número
+   mientras el agente teclea la dirección — o sea, en cada llamada. */
+var agCtrls = {};
+function agSuggest(q, cb, chan){
+  chan = chan || 'addr';
+  try{ if(agCtrls[chan]) agCtrls[chan].abort(); }catch(e){}
+  var ctl = new AbortController();
+  agCtrls[chan] = ctl;
   var u = AG_BASE+'/suggest?f=json&countryCode=USA&category=Address&maxSuggestions=6'
         + '&searchExtent='+encodeURIComponent(agExtent())     // solo el área de servicio
         + '&text='+encodeURIComponent(q);
-  fetch(u, {signal:agCtrl.signal})
+  fetch(u, {signal:ctl.signal})
     .then(function(r){ return r.json(); })
     .then(function(d){
       var list = (d && d.suggestions) ? d.suggestions.filter(function(s){ return !s.isCollection; }) : [];
       cb(list);
     })
-    .catch(function(e){ if(e.name!=='AbortError') cb([]); });
+    // Solo se traga la respuesta si ESTE flujo se reemplazó a sí mismo (ya viene una más nueva).
+    .catch(function(){ if(!ctl.signal.aborted) cb([]); });
 }
 // magicKey → dirección oficial + coordenadas + estado (TX/NM)
 function agDetails(text, magicKey, cb){
@@ -621,7 +631,7 @@ function agAutocomplete(q, seq){
     if(seq !== acSeq) return;
     if(sugs.length) acRender(seq, agToItems(sugs));
     else queryNominatim(q, seq);         // último respaldo
-  });
+  }, 'addr');
 }
 
 // Decide qué motor usar (Google si está vivo; si no, ArcGIS)
@@ -653,7 +663,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r54-2026-09-15';
+var APP_VERSION = 'r55-2026-09-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -3167,7 +3177,7 @@ function trPredictReal(addr){
         return { label: String(it.text||'').replace(/,\s*USA\s*$/i,''),
                  pick: function(){ pickTrArcGIS(it); } };
       }));
-    });
+    }, 'transcript');
   }
 
   if(!(googleReady && gAuto)){ useArcGIS(); return; }
@@ -3235,7 +3245,7 @@ function trResolve(addr){
         autoRoute(a.RegionAbbr || a.Region || '');
         var t=document.getElementById('trSuggestTxt'); if(t && trResolvedCompact) t.textContent = trResolvedCompact;
       });
-    });
+    }, 'resolve');
   }
   if(!(googleReady && gAuto && gPlaces)){ agFallback(); return; }
   try{
