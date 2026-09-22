@@ -675,7 +675,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r58-2026-09-21';
+var APP_VERSION = 'r59-2026-09-21';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -683,6 +683,31 @@ function showUpdateBanner(){
   d.textContent='🔄 New version available — click to update';
   d.onclick=function(){ location.replace(location.pathname + '?v=' + Date.now()); };
   document.body.appendChild(d);
+  autoUpdateWhenSafe();
+}
+
+/* El banner solo sirve si alguien lo aprieta. Divine estuvo un MES en una versión de agosto
+   con la búsqueda de Nuevo México rota, porque nunca recargó. Ahora, si no hay nada que
+   perder, la página se actualiza sola; si hay llamada o datos escritos, espera y reintenta.
+   NUNCA recarga a media llamada ni encima de un formulario a medio llenar. */
+function autoUpdateWhenSafe(){
+  if(window.__autoUpdTimer) return;
+  function nothingToLose(){
+    try{
+      if(window.__callActive || (typeof callIsActive!=='undefined' && callIsActive)) return false;
+      var ids=['addr','owner','phone','phone2','notes','apptDate'];
+      for(var i=0;i<ids.length;i++){
+        var el=document.getElementById(ids[i]);
+        if(el && String(el.value||'').trim()) return false;      // el agente ya escribió algo
+      }
+      var tr=document.getElementById('trHUD');
+      if(tr && String(tr.innerText||'').trim().length>40) return false;   // hay transcript vivo
+      return true;
+    }catch(e){ return false; }
+  }
+  window.__autoUpdTimer = setInterval(function(){
+    if(nothingToLose()) location.replace(location.pathname + '?v=' + Date.now());
+  }, 20000);
 }
 function checkForUpdate(){
   fetch(location.pathname + '?_=' + Date.now(), { cache:'no-store' })
