@@ -675,7 +675,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r56-2026-09-15';
+var APP_VERSION = 'r58-2026-09-21';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1111,6 +1111,32 @@ function titleCaseName(s){ return String(s||'').toLowerCase().replace(/\b([a-z])
 function gisOutFields(cfg){
   return (cfg.fields ? cfg.fields : [cfg.owner, cfg.addr].concat(cfg.extra||[])).join(',');
 }
+/* CONSULTAS GIS POR POST, NO POR GET.
+   El GIS de Doña Ana rechaza a nivel de red las peticiones GET largas: con 20 campos en
+   outFields contesta, con 21 truena con "Failed to fetch" (sin cabeceras CORS, así que ni
+   siquiera se ve como error HTTP). Por eso a Divine, en "122 Ridgecrest St, Las Cruces",
+   Doña Ana no contestaba y la app le enseñaba 36 casas de El Paso — la casa correcta
+   (122 RIDGECREST DR, KEARNS ELIZABETH ANNA) sí estaba ahí.
+   POST con form-urlencoded es "simple request" en CORS (no hay preflight) y no tiene ese
+   límite: probado 6/6 en Doña Ana y en las dos capas de El Paso. */
+function gisPost(url, params, ms){
+  var opts = { method:'POST',
+               headers:{ 'Content-Type':'application/x-www-form-urlencoded' },
+               body: params };
+  if(typeof ms === 'number' && typeof withTimeoutGlobal === 'function') return withTimeoutGlobal(url, ms, opts);
+  return fetch(url, opts);
+}
+// Timeout reutilizable fuera de fetchCountyOwner (streetFallback también lo ocupa)
+function withTimeoutGlobal(url, ms, opts){
+  var ctl = (typeof AbortController!=='undefined') ? new AbortController() : null;
+  var o = opts || {};
+  if(ctl) o.signal = ctl.signal;
+  var t = setTimeout(function(){ try{ if(ctl) ctl.abort(); }catch(_){ } }, ms);
+  return fetch(url, o).then(
+    function(r){ clearTimeout(t); return r; },
+    function(e){ clearTimeout(t); throw e; });
+}
+
 // Lo MÍNIMO para poder dar un dueño, por si el condado quitó algún campo extra
 function gisMinFields(cfg){
   return (cfg.numField ? [cfg.owner,cfg.numField,cfg.streetField] : [cfg.owner,cfg.addr]).join(',');
@@ -1209,6 +1235,12 @@ function ownerActionRow(hs, which){
 }
 // Delegado: clic en el botón USPhonebook de la tarjeta
 if($('ownerGis')) $('ownerGis').addEventListener('click', function(e){ if(e.target.closest('[data-act="usp"]')) runUsp(); });
+// Delegado: "↻ Try again" cuando un condado no contestó (borra el caché para que sí reintente)
+if($('ownerGis')) $('ownerGis').addEventListener('click', function(e){
+  if(!e.target.closest('[data-act="retry"]')) return;
+  try{ for(var k in ownerCache) delete ownerCache[k]; }catch(_){}
+  searchOwner();
+});
 
 // Busca el dueño en AMBOS condados (El Paso + Doña Ana) a la vez, con match FLEXIBLE, y usa el que encuentre.
 // Así ya no importa qué condado esté seleccionado: una dir de NM (Anthony/Santa Teresa/Las Cruces/Sunland Park)
@@ -1304,8 +1336,8 @@ function fetchCountyOwner(hs){
     // elige abajo por prefijo exacto. Cortar en 10 podría dejarla fuera.
     function hit(c, minimal){
       var flds = minimal ? gisMinFields(c) : gisOutFields(c);
-      var url=c.url+'?where='+encodeURIComponent(whereFor(c))+'&outFields='+encodeURIComponent(flds)+'&returnGeometry=false&resultRecordCount=25&f=json';
-      return withTimeout(url, OWNER_TIMEOUT_MS)
+      var params='where='+encodeURIComponent(whereFor(c))+'&outFields='+encodeURIComponent(flds)+'&returnGeometry=false&resultRecordCount=25&f=json';
+      return gisPost(c.url, params, OWNER_TIMEOUT_MS)
         .then(function(r){ return r.json(); })
         .then(function(j){
           // Si el condado quitó un campo, ArcGIS tumba la consulta ENTERA con 400. Reintenta
@@ -1435,17 +1467,25 @@ function streetFallback(hs){
     function hitStreet(c, minimal){
       var out = minimal ? gisMinFields(c)
                         : (c.fields ? c.fields : [c.owner,c.addr].concat(key==='dona'?['CITY','ZIP']:['HOMESTEAD'])).join(',');
-      return fetch(c.url+'?where='+encodeURIComponent(gisStreetWhere(c,words))+'&outFields='+encodeURIComponent(out)+'&returnGeometry=false&resultRecordCount=60&f=json')
+      return gisPost(c.url, 'where='+encodeURIComponent(gisStreetWhere(c,words))+'&outFields='+encodeURIComponent(out)+'&returnGeometry=false&resultRecordCount=60&f=json', OWNER_TIMEOUT_MS)
         .then(function(r){ return r.json(); })
         .then(function(j){
-          if(j && j.error && !minimal) return hitStreet(c, true);   // campo inexistente → reintenta mínimo
+          if(j && j.error){
+            if(!minimal) return hitStreet(c, true);                  // campo inexistente → reintenta mínimo
+            return {key:key,cfg:c,feats:[],failed:true};             // el servicio FALLÓ
+          }
           return {key:key,cfg:c,feats:gisNorm(c,(j&&j.features)||[])};
         })
-        .catch(function(){ return {key:key,cfg:c,feats:[]}; });
+        // Antes esto devolvía feats:[] y una caída (o una red que bloquea al condado) se
+        // veía EXACTAMENTE igual que "esa calle no existe aquí".
+        .catch(function(){ return {key:key,cfg:c,feats:[],failed:true}; });
     }
     return hitStreet(cfg).then(function(a){
       if(a.feats.length || !cfg.backup) return a;
-      return hitStreet(cfg.backup);     // la capa nueva no tiene esa calle → prueba la vieja
+      return hitStreet(cfg.backup).then(function(b){
+        if(b.feats.length) return b;
+        return (a.failed || b.failed) ? {key:key,cfg:cfg,feats:[],failed:true} : b;
+      });
     });
   }
   Promise.all([byStreet('epcad'), byStreet('dona')]).then(function(res){
@@ -1460,6 +1500,26 @@ function streetFallback(hs){
     });
     var want=parseInt(hs.house,10)||0;
     rows.sort(function(x,y){ return Math.abs(x.num-want)-Math.abs(y.num-want); });
+
+    /* ¿El condado con el que está trabajando el agente contestó?
+       Caso real (Divine, 122 Ridgecrest St, Las Cruces NM): Doña Ana no respondió desde su
+       computadora y la app le enseñó 36 casas de El Paso como si fueran "las casas de esa
+       calle" — la casa correcta (122 RIDGECREST DR, KEARNS ELIZABETH ANNA) sí existe en NM.
+       Enseñar el condado equivocado sin avisar es peor que no enseñar nada. */
+    var mine = state.county, other = (mine==='dona') ? 'epcad' : 'dona';
+    var myRes = res.filter(function(r){ return r.key===mine; })[0] || {};
+    var myRows = rows.filter(function(r){ return r.county===mine; }).length;
+    var countyLabel = function(k){ return k==='dona' ? 'Doña Ana (NM)' : 'El Paso (TX)'; };
+    var warn = '';
+    if(myRes.failed){
+      warn = '<div style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;border-radius:9px;padding:9px 11px;font-size:13.5px;font-weight:700;margin-bottom:8px">'
+           + '⚠️ <b>'+countyLabel(mine)+' county records did not answer</b> from this computer.'
+           + (rows.length ? ' Anything listed below is from '+countyLabel(other)+' — <b>not</b> the county you are working.' : '')
+           + ' <button class="btn ghost sm" data-act="retry" style="margin-top:6px">↻ Try again</button></div>';
+    } else if(rows.length && !myRows){
+      warn = '<div style="background:#fffbeb;border:1px solid #f59e0b;color:#92400e;border-radius:9px;padding:9px 11px;font-size:13.5px;font-weight:700;margin-bottom:8px">'
+           + '⚠️ No house on this street exists in <b>'+countyLabel(mine)+'</b>. Everything below is from <b>'+countyLabel(other)+'</b> — confirm the city with the customer.</div>';
+    }
     if(!rows.length){
       /* El GIS público es una FOTO del padrón y va atrasada: los fraccionamientos NUEVOS
          todavía no están en la capa, aunque EPCAD en vivo sí los tenga (ej. 13849 Paseo de
@@ -1468,24 +1528,33 @@ function streetFallback(hs){
          OJO: EPCAD es de TEXAS. Para una dirección de Nuevo México cargar ese iframe es
          enseñarle al agente el condado equivocado, así que ahí no se carga. */
       var isTx = (state.county !== 'dona');
-      box.innerHTML='<div style="font-size:14px;color:#991b1b;font-weight:700">❌ <b>'+esc(titleCaseName((hs.house+' '+hs.street).trim()))+'</b> isn\'t in the El Paso / Doña Ana GIS snapshot.</div>'
-        + '<div style="font-size:13px;color:var(--muted);margin-top:6px">'
-        + (isTx ? 'The GIS layer lags behind on new construction. The live EPCAD search is loading below — read the owner there. If it\'s empty too, confirm the street spelling with the customer.'
-                : 'The GIS layer lags behind on new construction. Open the Doña Ana assessor below, or confirm the street spelling with the customer.')
-        + '</div>'
+      // Si el condado ni contestó, NO podemos afirmar que la casa no está en el padrón.
+      box.innerHTML = warn
+        + (myRes.failed
+            ? '<div style="font-size:13px;color:var(--muted)">We could not reach '+countyLabel(mine)+', so we can\'t tell whether this address is on file. Try again, or open the assessor below.</div>'
+            : '<div style="font-size:14px;color:#991b1b;font-weight:700">❌ <b>'+esc(titleCaseName((hs.house+' '+hs.street).trim()))+'</b> isn\'t in the El Paso / Doña Ana GIS snapshot.</div>'
+              + '<div style="font-size:13px;color:var(--muted);margin-top:6px">'
+              + (isTx ? 'The GIS layer lags behind on new construction. The live EPCAD search is loading below — read the owner there. If it\'s empty too, confirm the street spelling with the customer.'
+                      : 'The GIS layer lags behind on new construction. Open the Doña Ana assessor below, or confirm the street spelling with the customer.')
+              + '</div>')
         + ownerActionRow(hs,'both');
-      if(!isTx) return;                       // NM → no abrir EPCAD (Texas) en el panel
+      if(!isTx || myRes.failed) return;       // NM (o condado caído) → no abrir EPCAD (Texas)
       var liveUrl = epcadSearchUrl(hs);
       $('ownerFrameCrop').style.display=''; $('ownerFrame').src = liveUrl;
       $('ownerPanelOpen').href = liveUrl; $('ownerPanelOpen').style.display='';
       return;
     }
-    var h='<div style="background:#fffbeb;border:1px solid #f59e0b;color:#92400e;border-radius:9px;padding:9px 11px;font-size:14px;font-weight:800">⚠️ There is no <b>'+esc(hs.house)+'</b> on '+esc(titleCaseName(hs.street))+'. Confirm the number with the customer.</div>'
+    // Solo se puede afirmar "no existe ese número" si el condado del agente SÍ contestó.
+    var h = warn
+      + (myRes.failed ? ''
+        : '<div style="background:#fffbeb;border:1px solid #f59e0b;color:#92400e;border-radius:9px;padding:9px 11px;font-size:14px;font-weight:800">⚠️ There is no <b>'+esc(hs.house)+'</b> on '+esc(titleCaseName(hs.street))+'. Confirm the number with the customer.</div>')
       + '<div style="font-size:12.5px;color:var(--muted);margin-top:9px;font-weight:700">Real houses on this street ('+rows.length+') — tap the right one:</div>'
       + '<div style="max-height:230px;overflow:auto;margin-top:5px;border:1px solid var(--line);border-radius:9px">';
     rows.slice(0,40).forEach(function(r,i){
       h+='<div data-pick="'+esc(r.addr)+'" data-county="'+r.county+'" data-owner="'+esc(r.owner)+'" data-hs="'+esc(r.hs||'')+'" data-city="'+esc(r.city||'')+'" style="cursor:pointer;padding:6px 9px;font-size:13px;'+(i?'border-top:1px solid var(--line);':'')+'">'
        + '<b>'+esc(titleCaseName(r.addr))+'</b>'+(r.city?' <span style="color:var(--muted)">· '+esc(r.city)+'</span>':'')
+       // Marca de condado: sin esto, "Ridgecrest Dr · El Paso" se confunde con el de Las Cruces
+       + (r.county!==mine ? ' <span style="color:#92400e;background:#fef3c7;border-radius:5px;padding:0 5px;font-size:11px;font-weight:800">'+esc(r.county==='dona'?'NM':'TX')+'</span>' : '')
        + (r.hs?' <span style="color:#1e40af;font-size:11px;font-weight:800">🏡 lives here</span>':'')
        + '<div style="color:var(--muted);font-size:12px">'+esc(r.owner)+'</div></div>';
     });
