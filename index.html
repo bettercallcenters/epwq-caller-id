@@ -675,7 +675,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r59-2026-09-21';
+var APP_VERSION = 'r60-2026-10-13';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1035,6 +1035,11 @@ function parseHouseStreet(addr){
   var street = (m ? m[2] : a).replace(ST_SUFFIX,'').trim();
   return { house:house, street:street, clean:((house?house+' ':'')+street).trim() };
 }
+// Condición: comprueba si la dirección contiene número de calle
+function hasStreetNumber(addr){
+  var hs = parseHouseStreet(addr);
+  return !!(hs && hs.house && /^\d+/.test(hs.house));
+}
 // Panel del dueño: EPCAD se embebe; Doña Ana/USPhonebook bloquean iframe → lanzador en el MISMO lugar
 function ownerShowEmbed(url, title){
   $('ownerPanelTitle').textContent = title || '🏠 County record — owner';
@@ -1070,9 +1075,10 @@ function searchOwner(){
   var addr = (state.addrCompact || $('addr').value || '').trim();
   if(!addr){ toast('Type the address first'); $('addr').focus(); return; }
   var hs = parseHouseStreet(addr);
+  var targetLabel = hs.clean || hs.street || addr;
   // Busca en AMBOS condados (El Paso + Doña Ana) a la vez; fetchCountyOwner decide el panel según dónde haya match
   ownerShowGis('🏠 Looking up owner…');
-  var gb=$('ownerGis'); if(gb) gb.innerHTML='<div style="color:var(--muted);font-size:14px">🔎 Searching El Paso + Doña Ana county records for <b>'+esc(hs.house+' '+hs.street)+'</b>…</div>';
+  var gb=$('ownerGis'); if(gb) gb.innerHTML='<div style="color:var(--muted);font-size:14px">🔎 Searching El Paso + Doña Ana county records for <b>'+esc(targetLabel)+'</b>…</div>';
   fetchCountyOwner(hs);   // lee el dueño del GIS público (los 2 condados) y llena "Owner name" → mensaje
   // Al mismo tiempo: USPhonebook de quien llama → sale como 2º recuadro (solo si el bot está configurado; si no, es Cloudflare y no se puede leer)
   try{ if(callerLookupUrl() && digits($('phone').value||'').length===10){ lookupCaller($('phone').value); } }catch(e){}
@@ -1305,8 +1311,22 @@ var ST_NOISE = { ST:1,STREET:1,RD:1,ROAD:1,DR:1,DRIVE:1,AVE:1,AV:1,AVENUE:1,LN:1
   PKWY:1,HWY:1,LOOP:1,NE:1,NW:1,SE:1,SW:1,NORTH:1,SOUTH:1,EAST:1,WEST:1 };
 
 function fetchCountyOwner(hs){
-  if(!hs || !hs.house || !hs.street) return;
+  if(!hs || !hs.street) return;
   var note=$('ownerDetected');
+
+  // Condición: si falta el número de calle, avisar limpiamente sin trabar la interfaz
+  if(!hs.house){
+    if(note) note.style.display='none';
+    ownerShowGis('🏠 County record — owner');
+    var gb=$('ownerGis');
+    if(gb){
+      gb.innerHTML='<div style="color:#b45309;font-size:13.5px;line-height:1.45">'
+        + '⚠️ <b>No street number provided</b> (street name only: <b>' + esc(hs.street) + '</b>).<br>'
+        + '<span style="color:var(--muted);font-size:12.5px">County deed records require a house number to locate the property owner. You can enter the customer name manually and send the appointment as-is.</span>'
+        + '</div>' + ownerActionRow(hs, 'Open Doña Ana assessor');
+    }
+    return;
+  }
   if(note){ note.style.display=''; note.textContent='🔎 Looking up owner (El Paso + Doña Ana county records)…'; }
   var token = (hs.house+' '+hs.street).toUpperCase(); window.__ownerReq = token;
 
