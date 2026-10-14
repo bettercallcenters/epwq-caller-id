@@ -676,7 +676,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r61-2026-10-14';
+var APP_VERSION = 'r62-2026-10-14';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1959,9 +1959,9 @@ function waBase(){ return (callerLookupUrl() || DEFAULT_LOOKUP_URL); }
 /* ============================================================
    ENRUTAMIENTO DE GRUPO DE WHATSAPP (SOLO HOY 2026-10-14)
    - Cita agendada para HOY MISMO.
-   - Idioma estrictamente ESPAÑOL.
+   - Idioma ESPAÑOL o BILINGÜE.
    → Se envía al grupo "Todays Spanish Appointments Only"
-   Cualquier otra fecha (mañana, etc.) o idioma (English/Bilingual)
+   Cualquier otra fecha (mañana, etc.) o idioma (English)
    sigue yendo a "EL PASO CALL CENTER".
    A partir de mañana se desactiva solo sin tocar el código.
 ============================================================ */
@@ -1975,9 +1975,9 @@ function targetWaGroupInfo(){
   var isSpecialDate = (todayDenver === '2026-10-14' || (typeof ymd === 'function' && ymd(new Date()) === '2026-10-14'));
   var apptVal = ($('apptDate') ? $('apptDate').value : '').trim();
   var isApptToday = !!apptVal && (apptVal === todayDenver || (typeof ymd === 'function' && apptVal === ymd(new Date())));
-  var isSpanish = (state.lang === 'Spanish');
+  var isSpanishOrBilingual = (state.lang === 'Spanish' || state.lang === 'Bilingual');
 
-  if(isSpecialDate && isApptToday && isSpanish){
+  if(isSpecialDate && isApptToday && isSpanishOrBilingual){
     return {
       isSpecial: true,
       name: 'Todays Spanish Appointments Only',
@@ -2112,7 +2112,7 @@ $('waMsg').addEventListener('click', function(){
     function finalizarEnvio(crmResult){
       var partes = [], fallo = false;
       if((wa && wa.ok) || (crmResult && (crmResult.ok || crmResult.duplicate))) captureSent = true;
-      if(wa && wa.ok) partes.push(groupInfo.isSpecial ? 'Grupo (Spanish Only) ✔' : 'Grupo ✔');
+      if(wa && wa.ok) partes.push(groupInfo.isSpecial ? 'Grupo (Spanish/Bilingual) ✔' : 'Grupo ✔');
       else if(wa && wa.needQr){ partes.push('Grupo ✗ (falta escanear el QR)'); fallo = true; }
       else { partes.push('Grupo ✗' + ((wa && wa.error) ? ' (' + wa.error + ')' : '')); fallo = true; }
 
