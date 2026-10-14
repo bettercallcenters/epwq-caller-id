@@ -433,6 +433,7 @@
           <button class="btn" id="waMsg" style="background:#25D366;color:#fff;border-color:#1da851">📲 Send to EPCC WP GR</button>
           <button class="btn" id="hangMsg" title="Hang up the call" style="flex:0 0 auto;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;font-weight:700">📵 Hang up</button>
         </div>
+        <div id="waRoutingNotice" style="display:none;margin-top:6px;font-size:11.5px;font-weight:700;color:#166534;background:#dcfce7;border:1px solid #86efac;border-radius:8px;padding:6px 10px"></div>
         <!-- Bloqueo: no se puede copiar/enviar sin TELÉFONO ni IDIOMA (por eso en el grupo pedían "Phone number") -->
         <div id="reqWarn" style="display:none;margin-top:7px;font-size:13px;font-weight:700;color:#b91c1c;background:#fee2e2;border:1px solid #fca5a5;border-radius:8px;padding:8px 10px;line-height:1.5"></div>
         <!-- No agendó pero quiere que le hablen luego → cola de Setter Callbacks del Dispatcher -->
@@ -675,7 +676,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r60-2026-10-13';
+var APP_VERSION = 'r61-2026-10-14';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1832,6 +1833,7 @@ function buildMsg(){
   if(state.agent) parts.push('AGENT: ' + state.agent);   // quién agendó (HS/GD/DV)
   $('msg').textContent = parts.join('\n');
   try{ recheckRequired(); }catch(e){}
+  try{ updateWaButtonLabel(); }catch(e){}
 }
 
 // Botón 🔥 Hot lead (agrega "🔥 HOT LEAD" al mensaje)
@@ -1951,8 +1953,64 @@ $('copyMsg').addEventListener('click', function(){
   copy($('msg').textContent).then(function(){ toast('Message copied ✔'); captureSent = true; });   // copiado = entregado
 });
 
-/* Enviar el mensaje directo al grupo de WhatsApp "EL PASO CALL CENTER" vía el bot (Baileys) */
+/* Enviar el mensaje directo al grupo de WhatsApp vía el bot (Baileys) */
 function waBase(){ return (callerLookupUrl() || DEFAULT_LOOKUP_URL); }
+
+/* ============================================================
+   ENRUTAMIENTO DE GRUPO DE WHATSAPP (SOLO HOY 2026-10-14)
+   - Cita agendada para HOY MISMO.
+   - Idioma estrictamente ESPAÑOL.
+   → Se envía al grupo "Todays Spanish Appointments Only"
+   Cualquier otra fecha (mañana, etc.) o idioma (English/Bilingual)
+   sigue yendo a "EL PASO CALL CENTER".
+   A partir de mañana se desactiva solo sin tocar el código.
+============================================================ */
+function targetWaGroupInfo(){
+  var todayDenver = '';
+  try {
+    todayDenver = new Intl.DateTimeFormat('en-CA', { timeZone:'America/Denver', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
+  } catch(_) {
+    todayDenver = (typeof ymd === 'function') ? ymd(new Date()) : '';
+  }
+  var isSpecialDate = (todayDenver === '2026-10-14' || (typeof ymd === 'function' && ymd(new Date()) === '2026-10-14'));
+  var apptVal = ($('apptDate') ? $('apptDate').value : '').trim();
+  var isApptToday = !!apptVal && (apptVal === todayDenver || (typeof ymd === 'function' && apptVal === ymd(new Date())));
+  var isSpanish = (state.lang === 'Spanish');
+
+  if(isSpecialDate && isApptToday && isSpanish){
+    return {
+      isSpecial: true,
+      name: 'Todays Spanish Appointments Only',
+      btnLabel: '📲 Send to Todays Spanish Appointments Only',
+      badgeText: '📍 Routing today: <b>Todays Spanish Appointments Only</b> WhatsApp group'
+    };
+  }
+
+  return {
+    isSpecial: false,
+    name: 'EL PASO CALL CENTER',
+    btnLabel: '📲 Send to EPCC WP GR',
+    badgeText: ''
+  };
+}
+
+function updateWaButtonLabel(){
+  var btn = $('waMsg'); if(!btn) return;
+  var badge = $('waRoutingNotice');
+  var info = targetWaGroupInfo();
+
+  if(!btn.disabled || btn.textContent !== 'Sending…'){
+    btn.textContent = info.btnLabel;
+  }
+  if(badge){
+    if(info.isSpecial){
+      badge.innerHTML = info.badgeText;
+      badge.style.display = '';
+    } else {
+      badge.style.display = 'none';
+    }
+  }
+}
 
 /* CRM (dispatch): el mensaje también se guarda AQUÍ, no solo en el grupo.
    Por qué: el bot solo ve los mensajes mientras está conectado, y se desconecta seguido
@@ -2033,12 +2091,18 @@ $('waMsg').addEventListener('click', function(){
   if(!text){ toast('Nothing to send yet'); return; }
   if(!requireBeforeSend()) return;                    // sin teléfono o idioma NO se envía al grupo
   if(!state.agent){ toast('Pick your AGENT code first (HS / GD / DV)'); return; }
-  var btn=this, old=btn.textContent;
+  var btn=this;
   btn.disabled=true; btn.textContent='Sending…';
+
+  var groupInfo = targetWaGroupInfo();
+  var waBody = { text:text, agent:state.agent };
+  if(groupInfo.isSpecial){
+    waBody.group = groupInfo.name;
+  }
 
   // Los dos envíos van en paralelo: que el grupo falle NO debe impedir que la cita se guarde.
   Promise.allSettled([
-    fetch(waBase()+'/wa/send', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify({ text:text, agent:state.agent }) })
+    fetch(waBase()+'/wa/send', { method:'POST', headers:{'Content-Type':'application/json'}, body:JSON.stringify(waBody) })
       .then(function(r){ return r.json().catch(function(){ return {ok:false,error:'bad response'}; }); }),
     enviarAlCrm(text, state.agent)
   ]).then(function(res){
@@ -2048,9 +2112,9 @@ $('waMsg').addEventListener('click', function(){
     function finalizarEnvio(crmResult){
       var partes = [], fallo = false;
       if((wa && wa.ok) || (crmResult && (crmResult.ok || crmResult.duplicate))) captureSent = true;
-      if(wa && wa.ok) partes.push('Grupo ✔');
+      if(wa && wa.ok) partes.push(groupInfo.isSpecial ? 'Grupo (Spanish Only) ✔' : 'Grupo ✔');
       else if(wa && wa.needQr){ partes.push('Grupo ✗ (falta escanear el QR)'); fallo = true; }
-      else { partes.push('Grupo ✗'); fallo = true; }
+      else { partes.push('Grupo ✗' + ((wa && wa.error) ? ' (' + wa.error + ')' : '')); fallo = true; }
 
       if(crmResult && crmResult.duplicate){
         mostrarDuplicado(crmResult);
@@ -2077,7 +2141,10 @@ $('waMsg').addEventListener('click', function(){
     } else {
       finalizarEnvio(crm);
     }
-  }).finally(function(){ btn.disabled=false; btn.textContent=old; });
+  }).finally(function(){
+    btn.disabled=false;
+    updateWaButtonLabel();
+  });
 });
 
 /* Banner de duplicado: un toast se va solo y esto no se puede perder de vista. */
