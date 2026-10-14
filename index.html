@@ -676,7 +676,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r62-2026-10-14';
+var APP_VERSION = 'r63-2026-10-14';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1980,15 +1980,17 @@ function targetWaGroupInfo(){
   if(isSpecialDate && isApptToday && isSpanishOrBilingual){
     return {
       isSpecial: true,
-      name: 'Todays Spanish Appointments Only',
-      btnLabel: '📲 Send to Todays Spanish Appointments Only',
-      badgeText: '📍 Routing today: <b>Todays Spanish Appointments Only</b> WhatsApp group'
+      name: 'Todays Spanish Appointment Only',
+      jid: '120363429475600347@g.us',
+      btnLabel: '📲 Send to Todays Spanish Appointment Only',
+      badgeText: '📍 Routing today: <b>Todays Spanish Appointment Only</b> WhatsApp group'
     };
   }
 
   return {
     isSpecial: false,
     name: 'EL PASO CALL CENTER',
+    jid: '120363026586838634@g.us',
     btnLabel: '📲 Send to EPCC WP GR',
     badgeText: ''
   };
@@ -2098,6 +2100,7 @@ $('waMsg').addEventListener('click', function(){
   var waBody = { text:text, agent:state.agent };
   if(groupInfo.isSpecial){
     waBody.group = groupInfo.name;
+    if(groupInfo.jid) waBody.jid = groupInfo.jid;
   }
 
   // Los dos envíos van en paralelo: que el grupo falle NO debe impedir que la cita se guarde.
