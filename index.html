@@ -676,7 +676,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r63-2026-10-14';
+var APP_VERSION = 'r64-2026-10-15';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -1957,33 +1957,23 @@ $('copyMsg').addEventListener('click', function(){
 function waBase(){ return (callerLookupUrl() || DEFAULT_LOOKUP_URL); }
 
 /* ============================================================
-   ENRUTAMIENTO DE GRUPO DE WHATSAPP (SOLO HOY 2026-10-14)
-   - Cita agendada para HOY MISMO.
-   - Idioma ESPAÑOL o BILINGÜE.
-   → Se envía al grupo "Todays Spanish Appointments Only"
-   Cualquier otra fecha (mañana, etc.) o idioma (English)
-   sigue yendo a "EL PASO CALL CENTER".
-   A partir de mañana se desactiva solo sin tocar el código.
+   ENRUTAMIENTO DE GRUPO DE WHATSAPP
+   - Idioma ESPAÑOL o BILINGÜE:
+     → Se envía al grupo "Todays Spanish Appointment Only" (120363429475600347@g.us)
+       para cualquier fecha (hoy, mañana, etc.).
+   - Idioma INGLÉS:
+     → Se envía a "EL PASO CALL CENTER" (120363026586838634@g.us).
 ============================================================ */
 function targetWaGroupInfo(){
-  var todayDenver = '';
-  try {
-    todayDenver = new Intl.DateTimeFormat('en-CA', { timeZone:'America/Denver', year:'numeric', month:'2-digit', day:'2-digit' }).format(new Date());
-  } catch(_) {
-    todayDenver = (typeof ymd === 'function') ? ymd(new Date()) : '';
-  }
-  var isSpecialDate = (todayDenver === '2026-10-14' || (typeof ymd === 'function' && ymd(new Date()) === '2026-10-14'));
-  var apptVal = ($('apptDate') ? $('apptDate').value : '').trim();
-  var isApptToday = !!apptVal && (apptVal === todayDenver || (typeof ymd === 'function' && apptVal === ymd(new Date())));
   var isSpanishOrBilingual = (state.lang === 'Spanish' || state.lang === 'Bilingual');
 
-  if(isSpecialDate && isApptToday && isSpanishOrBilingual){
+  if(isSpanishOrBilingual){
     return {
       isSpecial: true,
       name: 'Todays Spanish Appointment Only',
       jid: '120363429475600347@g.us',
       btnLabel: '📲 Send to Todays Spanish Appointment Only',
-      badgeText: '📍 Routing today: <b>Todays Spanish Appointment Only</b> WhatsApp group'
+      badgeText: '📍 Routing: <b>Todays Spanish Appointment Only</b> WhatsApp group'
     };
   }
 
