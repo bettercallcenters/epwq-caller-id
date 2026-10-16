@@ -1958,16 +1958,20 @@ function waBase(){ return (callerLookupUrl() || DEFAULT_LOOKUP_URL); }
 
 /* ============================================================
    ENRUTAMIENTO DE GRUPO DE WHATSAPP
-   - Idioma ESPAÑOL o BILINGÜE:
-     → Se envía al grupo "Todays Spanish Appointment Only" (120363429475600347@g.us)
-       para cualquier fecha (hoy, mañana, etc.).
-   - Idioma INGLÉS:
-     → Se envía a "EL PASO CALL CENTER" (120363026586838634@g.us).
+   - ESPAÑOL o BILINGÜE **y la cita es para HOY**:
+     → "Todays Spanish Appointment Only" (120363429475600347@g.us).
+       En ese grupo no hay vendedores, y por eso la cita del día no se la puede
+       llevar quien no le toca.
+   - Todo lo demás —inglés, o cualquier otro día—:
+     → "EL PASO CALL CENTER" (120363026586838634@g.us).
+
+   "Hoy" se vuelve a calcular en cada cita: esto corre todos los días, no es de
+   una fecha. Nunca escribir una fecha a mano aquí.
 ============================================================ */
 function targetWaGroupInfo(){
   // Compute "today" in El Paso / America/Denver time — never hardcoded, always fresh
   // en-CA locale always produces YYYY-MM-DD which matches <input type="date"> value exactly
-  var todayDenver = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' });
+  var todayDenver = ymdDenver(0);   // la MISMA fuente que el chip de Today
   var apptDate    = ($('apptDate') && $('apptDate').value) || '';
   var isToday     = (apptDate !== '' && apptDate === todayDenver);
   var isSpanishOrBilingual = (state.lang === 'Spanish' || state.lang === 'Bilingual');
@@ -3696,6 +3700,22 @@ function dgAppend(ch, text){
    CITA — Día (calendario) + Horario flexible (de … a …)
 ============================================================ */
 function ymd(d){ return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0'); }
+// El día del calendario EN EL PASO, no el del navegador.
+//
+// El chip de "Today" ponía la fecha de la máquina del agente, y el ruteo la comparaba
+// contra la de El Paso. Si no coinciden —un agente trabajando desde otra zona, o nada
+// más con la hora mal puesta— la cita en español salía marcada como de hoy y se iba
+// callada al call center, que es justo lo que se quiere evitar.
+//
+// Una sola función para las dos cosas, y así no se vuelven a separar.
+function ymdDenver(off){
+  var hoy = new Date().toLocaleDateString('en-CA', { timeZone: 'America/Denver' });
+  if(!off) return hoy;
+  var p = hoy.split('-');
+  var d = new Date(Date.UTC(+p[0], +p[1]-1, +p[2]));
+  d.setUTCDate(d.getUTCDate() + off);        // aritmética en UTC: no se rompe con el cambio de horario
+  return d.toISOString().slice(0,10);
+}
 function dateOff(n){ var d=new Date(); d.setDate(d.getDate()+n); return d; }
 function h12(h){ var x=h%12; return x===0?12:x; }
 function mer(h){ return h<12?'AM':'PM'; }
@@ -3720,10 +3740,10 @@ function fillTimes(){
   $('timeFrom').value='16'; $('timeTo').value='18';   // 4 Pm – 6 Pm por defecto
 }
 function updateDayChips(){
-  var val=$('apptDate').value, m={ '0':val===ymd(new Date()), '1':val===ymd(dateOff(1)), '2':val===ymd(dateOff(2)) };
+  var val=$('apptDate').value, m={ '0':val===ymdDenver(0), '1':val===ymdDenver(1), '2':val===ymdDenver(2) };
   [].forEach.call(document.querySelectorAll('[data-day]'), function(c){ c.classList.toggle('on', m[c.dataset.day]===true); });
 }
-function setDayOffset(n){ $('apptDate').value=ymd(dateOff(n)); updateDayChips(); buildMsg(); }
+function setDayOffset(n){ $('apptDate').value=ymdDenver(n); updateDayChips(); buildMsg(); }
 
 var timeMode='range';   // 'range' (de…a…) | 'exact' (una hora)
 function applyTimeMode(mode){
