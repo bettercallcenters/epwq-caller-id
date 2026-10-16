@@ -210,10 +210,18 @@
            —que ellos no usan— o se le pregunta al cliente, que ya dio sus datos y lo nota.
            Con una llamada entrante esto se abre solo. A mano sirve para "la señora que
            llamó ayer, la de Winton". -->
-      <div id="citasBox" style="margin:0 0 14px">
-        <button class="btn ghost sm" id="citasToggle" style="width:100%;justify-content:center">🔎 Buscar cita en el CRM</button>
-        <div id="citasPanel" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden">
-          <div style="display:flex;gap:6px;padding:9px;border-bottom:1px solid var(--line)">
+      <!-- El switch tiene que SER un switch. La primera version era un boton con el
+           mismo estilo que Alerts / Sound / Test, asi que se leia como un botoncito mas
+           de la fila y nadie lo encontraba. Ahora es su propia seccion, con barra de
+           titulo de color y una pastilla que dice ON/OFF. -->
+      <div id="citasBox" style="margin:0 0 14px;border:2px solid var(--brand);border-radius:12px;overflow:hidden;background:#fff">
+        <button id="citasToggle" style="width:100%;display:flex;align-items:center;gap:10px;padding:10px 12px;border:0;cursor:pointer;background:linear-gradient(90deg,var(--brand),var(--accent));color:#fff;font:inherit;text-align:left">
+          <span style="font-size:17px">🔎</span>
+          <span style="flex:1;font-weight:800;font-size:14px;letter-spacing:.2px">CITAS EN EL CRM — buscar cliente</span>
+          <span id="citasPill" style="font-size:11.5px;font-weight:800;padding:3px 11px;border-radius:999px;background:rgba(255,255,255,.22);border:1px solid rgba(255,255,255,.55)">OFF</span>
+        </button>
+        <div id="citasPanel" style="display:none">
+          <div style="display:flex;gap:6px;padding:10px;background:var(--soft);border-bottom:1px solid var(--line)">
             <input id="citasQ" class="field" style="flex:1;min-width:0" placeholder="Nombre, teléfono, dirección o ciudad…" autocomplete="off" />
             <button class="btn primary sm" id="citasGo">Buscar</button>
           </div>
@@ -693,7 +701,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r66-2026-10-16';
+var APP_VERSION = 'r67-2026-10-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -3849,7 +3857,20 @@ function citasBuscar(params, vacio){
 function citasAbrir(abrir){
   var pan = $('citasPanel'); if(!pan) return;
   pan.style.display = abrir ? 'block' : 'none';
+  var pill = $('citasPill');
+  if(pill){
+    pill.textContent = abrir ? 'ON' : 'OFF';
+    pill.style.background = abrir ? '#fff' : 'rgba(255,255,255,.22)';
+    pill.style.color      = abrir ? 'var(--brand)' : '#fff';
+  }
+  // Se recuerda cómo lo dejó cada quien: Guillermo y Divine tienen la pestaña abierta
+  // todo el turno, y volver a prenderlo en cada recarga es justo lo que hace que se
+  // deje de usar.
+  try{ localStorage.setItem('epwq_citas_abierto', abrir ? '1' : '0'); }catch(_){}
   if(abrir && $('citasQ')) try{ $('citasQ').focus(); }catch(_){}
+  if(abrir && !$('citasOut').innerHTML){
+    $('citasOut').innerHTML = '<div style="padding:13px;color:#64748b;font-size:12.5px">Escribe un nombre, un teléfono, una calle o una ciudad y dale Buscar.<br>Si entra una llamada, la cita de esa persona sale aquí sola.</div>';
+  }
 }
 
 /* La llamada entrante: se busca sola por los 10 digitos y, si hay cita, el panel se
@@ -3865,6 +3886,8 @@ function citasPorTelefono(num){
 
 (function(){
   var t = $('citasToggle'); if(t) t.onclick = function(){ citasAbrir($('citasPanel').style.display === 'none'); };
+  var guardado = '0'; try{ guardado = localStorage.getItem('epwq_citas_abierto') || '0'; }catch(_){}
+  citasAbrir(guardado === '1');
   var g = $('citasGo');     if(g) g.onclick = function(){ citasBuscar({ q: ($('citasQ')||{}).value || '' }, 'Sin resultados. Prueba con menos letras.'); };
   var q = $('citasQ');      if(q) q.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); $('citasGo').click(); } });
 })();
