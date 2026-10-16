@@ -204,6 +204,23 @@
         </div>
       </div>
 
+      <!-- ── Buscador de citas del CRM ─────────────────────────────────────────
+           Guillermo y Divine contestan sin saber quién llama. Si el que marca ya tiene
+           cita, hasta hoy no había cómo enterarse durante la llamada: o se abre el CRM
+           —que ellos no usan— o se le pregunta al cliente, que ya dio sus datos y lo nota.
+           Con una llamada entrante esto se abre solo. A mano sirve para "la señora que
+           llamó ayer, la de Winton". -->
+      <div id="citasBox" style="margin:0 0 14px">
+        <button class="btn ghost sm" id="citasToggle" style="width:100%;justify-content:center">🔎 Buscar cita en el CRM</button>
+        <div id="citasPanel" style="display:none;margin-top:8px;border:1px solid var(--line);border-radius:12px;background:#fff;overflow:hidden">
+          <div style="display:flex;gap:6px;padding:9px;border-bottom:1px solid var(--line)">
+            <input id="citasQ" class="field" style="flex:1;min-width:0" placeholder="Nombre, teléfono, dirección o ciudad…" autocomplete="off" />
+            <button class="btn primary sm" id="citasGo">Buscar</button>
+          </div>
+          <div id="citasOut" style="max-height:330px;overflow:auto"></div>
+        </div>
+      </div>
+
       <!-- Blindaje: aviso + deshacer. Sale si un reset intentó (o logró) borrar lo ya capturado. -->
       <div id="guardBar" style="display:none;margin:0 0 12px;border:1px solid #fcd34d;background:#fffbeb;border-radius:10px;padding:9px 11px;gap:8px;align-items:center;flex-wrap:wrap">
         <b id="guardMsg" style="font-size:13px;color:#92400e">🛡️ Data protected — still on this call</b>
@@ -2990,6 +3007,9 @@ function onIncoming(num, answered, from){
   if(!answered) setCallMuted(false);                                              // llamada nueva/sonando → parte sin mute
   if(num){ setPhoneValue(pretty); buildMsg(); }
 
+  // AUTO: ¿el que esta marcando ya tiene cita? Si si, el panel se abre solo.
+  if(num) try{ citasPorTelefono(num); }catch(e){}
+
   // AUTO: busca la info del cliente en el bot (una vez por número) y la muestra dentro de la app
   if(num){ var dnum=digits(num); if(dnum.length===10 && dnum!==lastLookedUp && callerLookupUrl()){ lastLookedUp=dnum; lookupCaller(num); } }
 
@@ -3769,6 +3789,86 @@ $('timeTo').addEventListener('change', buildMsg);
 buildMsg();
 refreshCrmWarn();  // si este equipo no está conectado al CRM, que se vea ANTES de la primera cita
 restoreDraft();   // al FINAL: si el agente venía capturando, recarga sin perder nada
+
+/* ============================================================
+   BUSCADOR DE CITAS DEL CRM
+   ------------------------------------------------------------
+   Dos preguntas, las que se hacen con el telefono en la mano:
+     · entra una llamada  → "el que esta marcando, ¿ya tiene cita?"  (automatico)
+     · se busca a mano    → "la señora que llamo ayer, la de Winton"
+
+   Pega contra GET /api/appointments/lookup, que es de SOLO LECTURA y entra con el
+   mismo INGEST_TOKEN que la app ya usa para guardar citas. No escribe nada.
+============================================================ */
+var citasUltimoTel = '';      // para no repetir la consulta en cada evento de la misma llamada
+
+function citasFecha(iso){
+  if(!iso) return 'sin fecha';
+  try{
+    var d = new Date(iso);
+    var hoy = ymdDenver(0), dia = d.toLocaleDateString('en-CA', { timeZone:'America/Denver' });
+    var txt = d.toLocaleDateString('en-US', { timeZone:'America/Denver', month:'short', day:'numeric' })
+            + ' ' + d.toLocaleTimeString('en-US', { timeZone:'America/Denver', hour:'numeric', minute:'2-digit' });
+    if(dia === hoy)            return 'HOY ' + txt;
+    if(dia === ymdDenver(1))   return 'MAÑANA ' + txt;
+    return txt;
+  }catch(_){ return String(iso).slice(0,10); }
+}
+
+function citasPinta(lista, vacio){
+  var out = $('citasOut'); if(!out) return;
+  if(!lista || !lista.length){ out.innerHTML = '<div style="padding:14px;color:#64748b;font-size:13px">' + (vacio || 'Sin resultados.') + '</div>'; return; }
+  out.innerHTML = lista.map(function(a){
+    var quien  = (a.sellers && a.sellers.name) || '<i>sin asignar</i>';
+    var cuando = citasFecha(a.appt_at);
+    // El resultado se marca porque cambia la llamada: a quien ya compro no se le
+    // vuelve a ofrecer lo mismo, y a quien no estaba en casa se le reagenda.
+    var res = a.outcome ? '<span style="color:#b45309"> · ' + a.outcome + '</span>' : '';
+    var canc = String(a.status||'').toLowerCase()==='cancelled' ? '<span style="color:#dc2626;font-weight:700"> · CANCELADA</span>' : '';
+    return '<div style="padding:10px 11px;border-bottom:1px solid var(--line)">'
+      + '<div style="font-weight:700;font-size:13.5px">' + (a.name || '—') + ' <span style="font-weight:500;color:#64748b">· ' + (a.lang || '') + '</span></div>'
+      + '<div style="font-size:12.5px;color:#334155;margin-top:2px">📅 ' + cuando + ' · 🧑‍🔧 ' + quien + res + canc + '</div>'
+      + '<div style="font-size:12px;color:#64748b;margin-top:2px">📍 ' + (a.addr || '—') + '</div>'
+      + '<div style="font-size:12px;color:#64748b">📞 ' + (prettyPhone(a.phone10 || a.phone) || '—') + (a.setter ? ' · agendó ' + a.setter : '') + '</div>'
+      + '</div>';
+  }).join('');
+}
+
+function citasBuscar(params, vacio){
+  var tok = crmToken();
+  if(!tok){ citasPinta([], 'Falta la clave del CRM. Pídesela a Hector y conéctala arriba.'); return Promise.resolve([]); }
+  var qs = Object.keys(params).filter(function(k){ return params[k]; })
+            .map(function(k){ return k + '=' + encodeURIComponent(params[k]); }).join('&');
+  $('citasOut').innerHTML = '<div style="padding:14px;color:#64748b;font-size:13px">Buscando…</div>';
+  return fetch(CRM_BASE + '/api/appointments/lookup?' + qs, { headers:{ 'Authorization':'Bearer ' + tok } })
+    .then(function(r){ if(!r.ok) throw new Error('crm ' + r.status); return r.json(); })
+    .then(function(j){ var l = (j && j.appointments) || []; citasPinta(l, vacio); return l; })
+    .catch(function(e){ citasPinta([], 'No se pudo buscar (' + e.message + '). Revisa la señal.'); return []; });
+}
+
+function citasAbrir(abrir){
+  var pan = $('citasPanel'); if(!pan) return;
+  pan.style.display = abrir ? 'block' : 'none';
+  if(abrir && $('citasQ')) try{ $('citasQ').focus(); }catch(_){}
+}
+
+/* La llamada entrante: se busca sola por los 10 digitos y, si hay cita, el panel se
+   abre para que salte a la vista sin tener que acordarse de apretar nada. */
+function citasPorTelefono(num){
+  var d = digits(num || '');
+  if(d.length !== 10 || d === citasUltimoTel) return;
+  citasUltimoTel = d;
+  citasBuscar({ phone: d }, 'Este número no tiene citas en el CRM.').then(function(l){
+    if(l.length){ citasAbrir(true); if($('citasQ')) $('citasQ').value = prettyPhone(d) || d; }
+  });
+}
+
+(function(){
+  var t = $('citasToggle'); if(t) t.onclick = function(){ citasAbrir($('citasPanel').style.display === 'none'); };
+  var g = $('citasGo');     if(g) g.onclick = function(){ citasBuscar({ q: ($('citasQ')||{}).value || '' }, 'Sin resultados. Prueba con menos letras.'); };
+  var q = $('citasQ');      if(q) q.addEventListener('keydown', function(e){ if(e.key === 'Enter'){ e.preventDefault(); $('citasGo').click(); } });
+})();
+
 </script>
 </body>
 </html>
