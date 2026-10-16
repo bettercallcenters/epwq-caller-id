@@ -701,7 +701,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r67-2026-10-16';
+var APP_VERSION = 'r68-2026-10-16';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -3809,6 +3809,7 @@ restoreDraft();   // al FINAL: si el agente venía capturando, recarga sin perde
    mismo INGEST_TOKEN que la app ya usa para guardar citas. No escribe nada.
 ============================================================ */
 var citasUltimoTel = '';      // para no repetir la consulta en cada evento de la misma llamada
+var citasUltimaBusqueda = null;   // para volver a pintar la lista despues de cancelar o mover
 
 function citasFecha(iso){
   if(!iso) return 'sin fecha';
@@ -3832,12 +3833,22 @@ function citasPinta(lista, vacio){
     // El resultado se marca porque cambia la llamada: a quien ya compro no se le
     // vuelve a ofrecer lo mismo, y a quien no estaba en casa se le reagenda.
     var res = a.outcome ? '<span style="color:#b45309"> · ' + a.outcome + '</span>' : '';
-    var canc = String(a.status||'').toLowerCase()==='cancelled' ? '<span style="color:#dc2626;font-weight:700"> · CANCELADA</span>' : '';
+    var cancelada = String(a.status||'').toLowerCase()==='cancelled';
+    var canc = cancelada ? '<span style="color:#dc2626;font-weight:700"> · CANCELADA</span>' : '';
     return '<div style="padding:10px 11px;border-bottom:1px solid var(--line)">'
       + '<div style="font-weight:700;font-size:13.5px">' + (a.name || '—') + ' <span style="font-weight:500;color:#64748b">· ' + (a.lang || '') + '</span></div>'
       + '<div style="font-size:12.5px;color:#334155;margin-top:2px">📅 ' + cuando + ' · 🧑‍🔧 ' + quien + res + canc + '</div>'
       + '<div style="font-size:12px;color:#64748b;margin-top:2px">📍 ' + (a.addr || '—') + '</div>'
       + '<div style="font-size:12px;color:#64748b">📞 ' + (prettyPhone(a.phone10 || a.phone) || '—') + (a.setter ? ' · agendó ' + a.setter : '') + '</div>'
+      // Cancelar y reagendar aqui mismo. El cliente llama para cancelar y hasta ahora
+      // esa llamada terminaba en un mensaje suelto en el grupo que alguien tenia que
+      // reteclear en el CRM — y mientras, el vendedor iba manejando a Las Cruces.
+      + (cancelada ? '' :
+          '<div style="display:flex;gap:6px;margin-top:7px">'
+        + '<button class="btn ghost sm" data-cita-reag="' + a.id + '" style="flex:1">🔄 Reagendar</button>'
+        + '<button class="btn ghost sm" data-cita-canc="' + a.id + '" style="flex:1;color:#dc2626;border-color:#fecaca">❌ Cancelar</button>'
+        + '</div>'
+        + '<div id="citasForm-' + a.id + '" style="display:none;margin-top:7px;padding:8px;border:1px solid var(--line);border-radius:9px;background:var(--soft)"></div>')
       + '</div>';
   }).join('');
 }
@@ -3848,6 +3859,7 @@ function citasBuscar(params, vacio){
   var qs = Object.keys(params).filter(function(k){ return params[k]; })
             .map(function(k){ return k + '=' + encodeURIComponent(params[k]); }).join('&');
   $('citasOut').innerHTML = '<div style="padding:14px;color:#64748b;font-size:13px">Buscando…</div>';
+  citasUltimaBusqueda = { params: params, vacio: vacio };
   return fetch(CRM_BASE + '/api/appointments/lookup?' + qs, { headers:{ 'Authorization':'Bearer ' + tok } })
     .then(function(r){ if(!r.ok) throw new Error('crm ' + r.status); return r.json(); })
     .then(function(j){ var l = (j && j.appointments) || []; citasPinta(l, vacio); return l; })
@@ -3883,6 +3895,86 @@ function citasPorTelefono(num){
     if(l.length){ citasAbrir(true); if($('citasQ')) $('citasQ').value = prettyPhone(d) || d; }
   });
 }
+
+/* ── Cancelar y reagendar desde el buscador ──────────────────────────────────────
+   Las dos escriben en el CRM y el CRM avisa: siempre al grupo EL PASO CALL CENTER,
+   y ademas al grupo del vendedor cuando el dia que cambio es HOY — porque ese es el
+   que lo puede dejar de manejar a Las Cruces en balde. */
+function citasRefrescar(){
+  if(citasUltimaBusqueda) citasBuscar(citasUltimaBusqueda.params, citasUltimaBusqueda.vacio);
+}
+function citasAviso(txt, color){
+  var o = $('citasOut');
+  if(o) o.insertAdjacentHTML('afterbegin', '<div style="padding:9px 11px;font-size:12.5px;font-weight:700;color:' + (color||'#166534') + ';background:' + (color?'#fef2f2':'#f0fdf4') + '">' + txt + '</div>');
+}
+function citasPost(id, accion, cuerpo){
+  var tok = crmToken();
+  if(!tok){ citasAviso('Falta la clave del CRM.', '#dc2626'); return Promise.resolve(false); }
+  cuerpo = cuerpo || {};
+  cuerpo.quien = (typeof state !== 'undefined' && state.agent) ? state.agent : 'call center';
+  return fetch(CRM_BASE + '/api/appointments/' + encodeURIComponent(id) + '/' + accion, {
+    method:'POST',
+    headers:{ 'Content-Type':'application/json', 'Authorization':'Bearer ' + tok },
+    body: JSON.stringify(cuerpo)
+  }).then(function(r){ return r.json().catch(function(){ return {}; }).then(function(j){
+      if(!r.ok || !j.ok) throw new Error((j && j.error) || ('crm ' + r.status));
+      return j;
+  }); });
+}
+function citasFormCancelar(id){
+  var box = $('citasForm-' + id); if(!box) return;
+  if(box.style.display === 'block'){ box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  box.innerHTML = '<div style="font-size:12px;font-weight:700;margin-bottom:5px">¿Por qué cancela? (opcional)</div>'
+    + '<input id="cancMot-' + id + '" class="field" placeholder="Ya no le interesa, se va de viaje…" autocomplete="off" />'
+    + '<div style="display:flex;gap:6px;margin-top:7px">'
+    + '<button class="btn sm" id="cancOk-' + id + '" style="flex:1;background:#dc2626;color:#fff;border-color:#dc2626;font-weight:800">Sí, cancelar</button>'
+    + '<button class="btn ghost sm" id="cancNo-' + id + '" style="flex:1">No</button></div>';
+  $('cancNo-' + id).onclick = function(){ box.style.display = 'none'; };
+  $('cancOk-' + id).onclick = function(){
+    var b = $('cancOk-' + id); b.disabled = true; b.textContent = 'Cancelando…';
+    citasPost(id, 'cancelar', { motivo: ($('cancMot-' + id)||{}).value || '' })
+      .then(function(j){
+        citasRefrescar();
+        citasAviso(j.yaEstaba ? '☑️ Esa cita ya estaba cancelada.' : '❌ Cita cancelada · avisado en EL PASO CALL CENTER', '#dc2626');
+      })
+      .catch(function(e){ b.disabled = false; b.textContent = 'Sí, cancelar'; citasAviso('No se pudo cancelar (' + e.message + ')', '#dc2626'); });
+  };
+}
+function citasFormReagendar(id){
+  var box = $('citasForm-' + id); if(!box) return;
+  if(box.style.display === 'block'){ box.style.display = 'none'; return; }
+  box.style.display = 'block';
+  var horas = '';
+  for(var h = 8; h <= 20; h += 1){ horas += '<option value="' + h12(h) + ':00 ' + mer(h) + '">' + h12(h) + ':00 ' + mer(h) + '</option>'; }
+  box.innerHTML = '<div style="font-size:12px;font-weight:700;margin-bottom:5px">Nuevo día y hora</div>'
+    + '<div style="display:flex;gap:6px"><input type="date" id="reagD-' + id + '" class="field" style="flex:1" value="' + ymdDenver(1) + '" />'
+    + '<select id="reagH-' + id + '" class="field" style="flex:1">' + horas + '</select></div>'
+    + '<div style="display:flex;gap:6px;margin-top:7px">'
+    + '<button class="btn primary sm" id="reagOk-' + id + '" style="flex:1">Mover la cita</button>'
+    + '<button class="btn ghost sm" id="reagNo-' + id + '" style="flex:1">Cancelar</button></div>';
+  $('reagH-' + id).value = '10:00 AM';
+  $('reagNo-' + id).onclick = function(){ box.style.display = 'none'; };
+  $('reagOk-' + id).onclick = function(){
+    var d = ($('reagD-' + id)||{}).value, t = ($('reagH-' + id)||{}).value;
+    if(!d){ citasAviso('Escoge el día.', '#dc2626'); return; }
+    var b = $('reagOk-' + id); b.disabled = true; b.textContent = 'Moviendo…';
+    citasPost(id, 'reagendar', { date: d, time: t })
+      .then(function(){ citasRefrescar(); citasAviso('🔄 Cita movida · avisado en EL PASO CALL CENTER'); })
+      .catch(function(e){ b.disabled = false; b.textContent = 'Mover la cita'; citasAviso('No se pudo mover (' + e.message + ')', '#dc2626'); });
+  };
+}
+// Un solo escucha para toda la lista: los renglones se vuelven a pintar en cada busqueda,
+// asi que colgarle un onclick a cada boton se pierde en el siguiente repintado.
+(function(){
+  var out = $('citasOut'); if(!out) return;
+  out.addEventListener('click', function(ev){
+    var b = ev.target.closest && ev.target.closest('[data-cita-canc],[data-cita-reag]');
+    if(!b) return;
+    if(b.hasAttribute('data-cita-canc')) citasFormCancelar(b.getAttribute('data-cita-canc'));
+    else citasFormReagendar(b.getAttribute('data-cita-reag'));
+  });
+})();
 
 (function(){
   var t = $('citasToggle'); if(t) t.onclick = function(){ citasAbrir($('citasPanel').style.display === 'none'); };
