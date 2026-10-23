@@ -399,7 +399,7 @@
 
         <!-- Carga de citas por hora (del CRM): ver de un vistazo DÓNDE cabe la cita, sin salir de la llamada -->
         <div class="field" id="loadWrap" style="display:none">
-          <label style="display:flex;align-items:center;gap:8px">📅 Appointment load · next 3 days
+          <label style="display:flex;align-items:center;gap:8px">📅 Appointment load · next 4 working days
             <span id="loadUpd" style="font-size:10px;color:var(--muted);font-weight:400;text-transform:none"></span>
           </label>
           <table id="loadTable" style="width:100%;border-collapse:collapse;font-size:11.5px;line-height:1.1;table-layout:fixed"></table>
@@ -701,7 +701,7 @@ function googlePredict(q, seq){
 var $ = function(id){ return document.getElementById(id); };
 
 /* Versión de la app — se sube en cada deploy. Si la desplegada difiere de la cargada, avisa (evita quedarse en caché vieja). */
-var APP_VERSION = 'r68-2026-10-16';
+var APP_VERSION = 'r69-2026-10-23';
 function showUpdateBanner(){
   if(document.getElementById('updBanner')) return;
   var d=document.createElement('div'); d.id='updBanner';
@@ -2962,7 +2962,11 @@ function renderLoad(days){
 function pollLoad(){
   // Edge function pública de SOLO agregados (conteos por hora, sin datos de clientes).
   // No usa el CRM directo porque sus rutas ahora requieren login de admin.
-  fetch('https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/appt-load?days=3', { cache:'no-store' })
+  //
+  // 4 días de TRABAJO, no 4 de calendario: la función salta los domingos. Así el viernes se
+  // ven viernes, sábado, lunes y martes — que es lo que de verdad se está vendiendo en esa
+  // llamada. Antes la tercera columna era un domingo lleno de ceros.
+  fetch('https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/appt-load?days=4', { cache:'no-store' })
     .then(function(r){ return r.json(); })
     .then(function(d){ if(d && d.ok && d.days){ renderLoad(d.days); var u=$('loadUpd'); if(u) u.textContent='· live'; } })
     .catch(function(){ /* CRM caído → la tabla simplemente no se actualiza */ });
