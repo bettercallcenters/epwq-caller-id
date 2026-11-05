@@ -253,6 +253,7 @@
         <button class="btn ghost sm" id="muteBtn">🔊 Sound: on</button>
         <button class="btn ghost sm" id="testAlert">▶︎ Test</button>
         <button class="btn ghost sm" id="crmCfg" title="Conectar esta tableta/teléfono con el CRM">🔗 CRM</button>
+        <button class="btn ghost sm" id="crmShareLink" title="Copiar un link para conectar OTROS equipos (contiene la clave — mándalo en privado)">📋 Link de conexión</button>
         <button class="btn sm" id="clearAll" style="margin-left:auto;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;font-weight:800">🧹 Clear all</button>
       </div>
 
@@ -2132,6 +2133,31 @@ function pedirCrmToken(){
   toast(v ? '🔗 Equipo conectado al CRM' : 'Equipo desconectado del CRM');
 }
 
+/* Opción B — propagar la conexión SIN volver a teclear la clave ni meterla al código.
+   Se conecta UN equipo (con 🔗 CRM), y desde ahí se copia un link .../#t=<clave> para
+   mandárselo a los demás: cada quien lo abre una vez y queda conectado. La clave sale del
+   navegador de este equipo, nunca del código (el repo es público). Por eso va con aviso de
+   mandarlo EN PRIVADO: el link lleva la clave adentro. */
+function linkDeConexion(){
+  var tok = crmToken();
+  if (!tok) return '';
+  return location.origin + location.pathname + '#t=' + encodeURIComponent(tok);
+}
+function copiarLinkConexion(){
+  var link = linkDeConexion();
+  if (!link){
+    toast('Primero conecta ESTE equipo (toca 🔗 CRM) y luego ya puedes copiar el link.');
+    return;
+  }
+  var okMsg = '🔗 Link de conexión copiado — mándalo EN PRIVADO a cada equipo';
+  function aMano(){ prompt('Copia este link y mándalo EN PRIVADO a cada equipo (lleva la clave adentro):', link); }
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText){
+      navigator.clipboard.writeText(link).then(function(){ toast(okMsg); }).catch(aMano);
+    } else { aMano(); }
+  } catch(_){ aMano(); }
+}
+
 $('waMsg').addEventListener('click', function(){
   var text = $('msg').textContent.trim();
   if(!text){ toast('Nothing to send yet'); return; }
@@ -3591,6 +3617,7 @@ $('trClear').addEventListener('click', function(){
 });
 if($('clearAll')) $('clearAll').addEventListener('click', doClearAll);
 if($('crmCfg')) $('crmCfg').addEventListener('click', pedirCrmToken);
+if($('crmShareLink')) $('crmShareLink').addEventListener('click', copiarLinkConexion);
 if($('crmWarnFix')) $('crmWarnFix').addEventListener('click', pedirCrmToken);
 if($('guardRestore')) $('guardRestore').addEventListener('click', restoreCapture);
 if($('guardDismiss')) $('guardDismiss').addEventListener('click', hideGuardBar);
