@@ -2188,6 +2188,23 @@ $('waMsg').addEventListener('click', function(){
   if(!text){ toast('Nothing to send yet'); return; }
   if(!requireBeforeSend()) return;                    // sin teléfono o idioma NO se envía al grupo
   if(!state.agent){ toast('Pick your AGENT code first (HS / GD / DV)'); return; }
+
+  /* SIN CRM NO SE AGENDA.
+     Antes esto mandaba la cita al grupo igual, pintaba "CRM ✗" en chiquito, y el setter
+     seguía trabajando creyendo que había quedado. El 2026-11-04 así se perdieron dos citas
+     —dos clientes que apartaron y a los que nadie volvió a hablar— y otras tres tardaron
+     80, 117 y 230 minutos en aparecer, porque dependían de que el bot las rescatara del
+     grupo. Hector se enteró con seis citas sin asignar y una empezando en una hora.
+     Una cita en el grupo y no en el CRM se ve igual de bien que una que sí quedó. Por eso
+     ahora se detiene ANTES de mandar nada: más vale que no deje agendar y se note, a que
+     deje agendar y no se note. */
+  if(!crmToken()){
+    refreshCrmWarn();
+    var aviso = document.getElementById('crmWarn');
+    if(aviso && aviso.scrollIntoView) aviso.scrollIntoView({ behavior:'smooth', block:'center' });
+    toast('⛔ Este equipo no está conectado al CRM. Toca “Conectar” antes de agendar — si la mandas así, la cita NO se guarda.', 6000);
+    return;
+  }
   var btn=this;
   btn.disabled=true; btn.textContent='Sending…';
 
