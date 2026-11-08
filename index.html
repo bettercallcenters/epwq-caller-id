@@ -2971,9 +2971,31 @@ function rcCallerDetect(d){
     if(callInProgress && ++rcIdleTicks >= 2){ rcIdleTicks = 0; callEnded(); }
   }
 }
+/* Quien esta llamando, SIN entrar al softphone.
+   Se le pregunta al backend DIRECTO, con la misma clave del CRM que este equipo ya tiene.
+   El backend trae el JWT de RingCentral, asi que el telefono no se autentica con RingCentral
+   en ningun momento — por eso cerrar la app ya no desconecta nada.
+
+   Antes esto pasaba por la funcion rc-caller de Supabase, que guardaba el token de admin.
+   Ese token quedo viejo: la funcion devolvia 502 "backend 401", el identificador se caia a
+   pedir el softphone, y habia que volver a entrar a RingCentral cada vez. La funcion sigue
+   ahi como respaldo por si el backend no contesta, pero ya no es el camino principal. */
+var RC_PRESENCE_URL = CRM_BASE + '/api/rc/presence';
+
 function pollTeam(){
   try{
-    fetch(RC_CALLER_URL).then(function(r){ return r.json(); })
+    var tok = crmToken();
+    var directo = tok
+      ? fetch(RC_PRESENCE_URL, { headers:{ Authorization:'Bearer ' + tok } })
+          .then(function(r){ if(!r.ok) throw new Error('presence ' + r.status); return r.json(); })
+          .then(function(agents){ return { ok:true, agents: Array.isArray(agents) ? agents : [] }; })
+      : Promise.reject(new Error('sin clave'));
+
+    directo
+      .catch(function(){
+        // Respaldo: la funcion intermedia. Si tambien falla, renderTeamRC pinta "no disponible".
+        return fetch(RC_CALLER_URL).then(function(r){ return r.json(); });
+      })
       .then(function(d){ renderTeamRC(d); rcCallerDetect(d); })
       .catch(function(){});
   }catch(_){}
