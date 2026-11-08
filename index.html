@@ -172,7 +172,7 @@
     <h1>Call Identifier · EPWQ</h1>
     <div class="sub">Live owner ID · EPCAD / Doña Ana · USPhonebook · Auto appointment message</div>
   </div>
-  <div class="who">Users: Guillermo · Divine · Hector<br><span id="rcStatus">RingCentral: sign in to the softphone ↘</span></div>
+  <div class="who">Users: Guillermo · Divine · Hector<br><span id="rcStatus">Identificador: conectando…</span></div>
 </header>
 
 <!-- Alerta: bot de WhatsApp desconectado (necesita re-escaneo) -->
@@ -469,14 +469,26 @@
     </div>
 
     <!-- Softphone de RingCentral EMBEBIDO y grande -->
-    <div class="card">
-      <h2>📞 RingCentral softphone
-        <button class="btn ghost sm" id="rcCfg" style="margin-left:auto" title="Use your own RingCentral app so the sign-in lasts 7 days instead of 1 hour">⚙️ Sign-in</button>
-      </h2>
+    <!-- Plegado a proposito. El identificador YA NO lo necesita: quien esta llamando sale
+         de /api/rc/presence, que el backend sirve con su propio JWT. Abierto, este panel
+         pedia "Sign In" cada vez que se cerraba la app y daba la impresion de que el
+         sistema estaba desconectado, cuando lo de abajo llevaba rato funcionando solo.
+         Se abre nada mas si alguien quiere CONTESTAR o COLGAR desde aqui. -->
+    <details class="card" id="rcCard">
+      <summary style="cursor:pointer;list-style:none;padding:0">
+        <h2 style="margin:0">📞 RingCentral softphone
+          <span style="margin-left:8px;font-weight:600;font-size:12px;color:var(--muted)">opcional — toca para abrir</span>
+          <button class="btn ghost sm" id="rcCfg" style="margin-left:auto" title="Usa tu propia app de RingCentral para que la sesión dure 7 días en vez de 1 hora">⚙️ Sign-in</button>
+        </h2>
+      </summary>
       <div class="body" style="padding:8px">
+        <div class="hintline" style="margin:0 0 8px">
+          <b>No hace falta entrar aquí.</b> Quién está llamando ya sale solo, abajo y arriba,
+          sin iniciar sesión. Esto es únicamente para contestar o colgar desde la app.
+        </div>
         <div id="rcMount" style="width:100%;height:540px;background:#f1f5f9;border-radius:12px"></div>
       </div>
-    </div>
+    </details>
 
     <!-- HUD de equipo: quién está en llamada -->
     <div class="card">
@@ -2058,12 +2070,37 @@ var CRM_BASE      = 'https://sdcc-integrations-production.up.railway.app';
    para que no quede en el historial ni se reenvíe por accidente al compartir la página.
    Va en el fragmento (#) y no en ?query= a propósito: el navegador nunca manda el fragmento
    al servidor, así que no termina escrito en ningún log. */
+/* El link tambien dice QUIEN ERES: .../#t=<clave>&a=HS
+   Sin eso, la app no sabe cual de los tres eres, y sin saberlo no te puede enseñar TUS
+   llamadas: rcCallerDetect() necesita tu extension para mirar tu presencia, y la saca del
+   codigo de agente. Antes el codigo solo llegaba de dos maneras — picandole al boton
+   HS/GD/DV a mano, o preguntandole al softphone de RingCentral. Por eso se sentia que
+   habia que "volver a entrar": sin softphone, nadie le decia a la app quien eras.
+   Con la "a" en el link, cada quien abre el suyo UNA vez y queda. */
 (function capturarClaveDelLink(){
+  var guardar = function (clave, valor) {
+    try { if (valor) localStorage.setItem(clave, valor); } catch(_){}
+  };
   try {
-    var m = (location.hash || '').match(/[#&]t=([^&]+)/);
-    if (!m) return;
-    var tok = decodeURIComponent(m[1]).trim();
-    if (tok) localStorage.setItem('epwq_crm_token', tok);
+    var h = location.hash || '';
+    var mt = h.match(/[#&]t=([^&]+)/);
+    var ma = h.match(/[#&]a=([^&]+)/);
+    if (!mt && !ma) return;
+    if (mt) guardar('epwq_crm_token', decodeURIComponent(mt[1]).trim());
+    if (ma) {
+      var code = decodeURIComponent(ma[1]).trim().toUpperCase();
+      if (code === 'HS' || code === 'GD' || code === 'DV') {
+        guardar('epwq_agent', code);
+        // Y se aplica YA. El restaurador de epwq_agent corre mas arriba en el archivo, o
+        // sea ANTES que esto, asi que guardarlo nada mas no serviria hasta la siguiente
+        // recarga — y el que abre su link espera que funcione en ese momento.
+        try {
+          state.agent = code;
+          segMark('agentSeg', 'agent', code);
+          if (typeof buildMsg === 'function') buildMsg();
+        } catch(_){}
+      }
+    }
     history.replaceState(null, '', location.pathname + location.search);
   } catch(_){ /* sin localStorage (privado/bloqueado) se sigue pudiendo pegar a mano */ }
 })();
@@ -2745,7 +2782,10 @@ window.addEventListener('message', function(e){
 
   // Login / estado
   if(d.type === 'rc-login-status-notify'){
-    $('rcStatus').textContent = d.loggedIn ? 'RingCentral: connected ✔' : 'RingCentral: sign in to the softphone ↘';
+    // Sin softphone NO es "desconectado": el identificador corre por el backend. Decir
+    // "sign in" ahi hacia creer que el sistema estaba caido cuando llevaba rato funcionando.
+    $('rcStatus').textContent = d.loggedIn ? 'RingCentral: softphone conectado ✔' : rcEstadoSinSoftphone();
+    window.__rcLoggedIn = !!d.loggedIn;
     if(d.loggedIn){ window.__agentDetected=false; setTimeout(function(){ requestRcExtension(0); }, 800); }   // detecta quién se logueó
     else { window.__agentDetected=false; var na=$('agentAuto'); if(na) na.style.display='none'; }
   }
@@ -2982,6 +3022,18 @@ function rcCallerDetect(d){
    ahi como respaldo por si el backend no contesta, pero ya no es el camino principal. */
 var RC_PRESENCE_URL = CRM_BASE + '/api/rc/presence';
 
+/* El letrero de arriba. Sin softphone NO estas desconectado: mientras la presencia del
+   backend conteste, el identificador esta vivo. Antes decia "sign in to the softphone" y
+   por eso parecia caido cada vez que se cerraba la app. */
+var rcPresenciaViva = false;
+function rcEstadoSinSoftphone(){
+  return rcPresenciaViva ? 'Identificador activo ✔ (no hace falta entrar)' : 'Identificador: conectando…';
+}
+function rcPintarEstado(){
+  var el = document.getElementById('rcStatus');
+  if (el && !window.__rcLoggedIn) el.textContent = rcEstadoSinSoftphone();
+}
+
 function pollTeam(){
   try{
     var tok = crmToken();
@@ -2996,7 +3048,7 @@ function pollTeam(){
         // Respaldo: la funcion intermedia. Si tambien falla, renderTeamRC pinta "no disponible".
         return fetch(RC_CALLER_URL).then(function(r){ return r.json(); });
       })
-      .then(function(d){ renderTeamRC(d); rcCallerDetect(d); })
+      .then(function(d){ rcPresenciaViva = !!(d && d.ok); rcPintarEstado(); renderTeamRC(d); rcCallerDetect(d); })
       .catch(function(){});
   }catch(_){}
 }
