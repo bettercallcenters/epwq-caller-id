@@ -53,6 +53,24 @@ Si prefieres a mano: botón **🔗 CRM** → pegar el `INGEST_TOKEN`.
 Ojo: se guarda por navegador. Otro navegador, modo privado, o limpiar los datos del sitio =
 hay que reconectar. Cada tableta y cada teléfono, una vez cada uno.
 
+## Un push NO significa publicado
+
+El sitio lo sirve GitHub Pages desde `main`, y **un build puede fallar sin que nadie se entere**.
+Pasó el 2026-11-05: se subió el botón "Link de conexión", Pages lo rechazó con *"Page build
+failed"* y la página se quedó **tres días** sirviendo la versión vieja. Se perdieron horas
+creyendo que el botón no existía.
+
+Por eso está `.github/workflows/verificar-publicacion.yml`: después de cada push a `main`
+espera el build de Pages, comprueba que haya quedado, y abre la página de verdad para ver que
+responda y traiga la app. Si algo de eso falla, el job sale **rojo** — tachita en el commit y
+correo de GitHub.
+
+Para revisarlo a mano:
+
+```
+gh api repos/bettercallcenters/epwq-caller-id/pages/builds | jq -r '.[0] | .status + " " + .commit[0:8]'
+```
+
 ## Correr local
 ```
 python3 -m http.server 5178 --directory .

@@ -1,0 +1,71 @@
+# ¿De verdad se publicó lo que acabas de subir?
+#
+# Existe por lo del 2026-11-05: se subió el botón "Link de conexión", GitHub Pages lo rechazó
+# con "Page build failed", y nadie se enteró. El sitio se quedó TRES DÍAS sirviendo la versión
+# vieja. Se perdieron horas creyendo que el botón no existía, cuando lo que pasaba es que
+# nunca llegó a publicarse.
+#
+# Un push verde en git no significa publicado. Esto espera al build de Pages, comprueba que
+# haya quedado, y de paso abre la página de verdad para ver que responda y no venga vacía.
+# Si algo falla, este job sale ROJO: aparece la tachita en el commit y GitHub manda correo.
+name: Verificar publicación
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  pages: read
+  contents: read
+
+jobs:
+  verificar:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Esperar el build de GitHub Pages
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SHA: ${{ github.sha }}
+        run: |
+          set -euo pipefail
+          echo "Esperando a que Pages publique $SHA…"
+          # Hasta 5 minutos. El build normal tarda menos de uno; si se pasa de aquí, algo va mal.
+          for intento in $(seq 1 30); do
+            builds="$(gh api "repos/${GITHUB_REPOSITORY}/pages/builds" --paginate 2>/dev/null || echo '[]')"
+            estado="$(echo "$builds" | jq -r --arg sha "$SHA" '[.[] | select(.commit == $sha)][0].status // ""')"
+            error="$(echo "$builds"  | jq -r --arg sha "$SHA" '[.[] | select(.commit == $sha)][0].error.message // ""')"
+
+            if [ "$estado" = "built" ]; then
+              echo "✅ Publicado."
+              exit 0
+            fi
+            if [ "$estado" = "errored" ]; then
+              echo "::error title=El sitio NO se publicó::GitHub Pages rechazó este commit: ${error:-sin detalle}. La página sigue sirviendo la versión anterior — lo que acabas de subir NO está en vivo."
+              exit 1
+            fi
+            sleep 10
+          done
+
+          echo "::error title=El build no terminó::Pasaron 5 minutos y Pages no reportó resultado para este commit. Revisa https://github.com/${GITHUB_REPOSITORY}/deployments — no des por hecho que está publicado."
+          exit 1
+
+      - name: Abrir la página publicada y revisar que sirva
+        run: |
+          set -euo pipefail
+          URL="https://bettercallcenters.github.io/epwq-caller-id/"
+          # Con un parámetro al azar para que ninguna caché de por medio conteste por el sitio.
+          codigo="$(curl -s -o /tmp/pagina.html -w '%{http_code}' -H 'Cache-Control: no-cache' "${URL}index.html?v=${GITHUB_SHA}")"
+          bytes="$(wc -c < /tmp/pagina.html | tr -d ' ')"
+          echo "HTTP $codigo · $bytes bytes"
+
+          if [ "$codigo" != "200" ]; then
+            echo "::error title=La página no responde::${URL} contestó HTTP ${codigo}."
+            exit 1
+          fi
+          # Marcador estable: si no está, lo que se sirvió no es la app (build a medias, página de error).
+          if ! grep -q 'id="crmWarn"' /tmp/pagina.html; then
+            echo "::error title=Se publicó algo que no es la app::La página respondió 200 pero no trae el contenido esperado."
+            exit 1
+          fi
+          echo "✅ La página está en vivo y responde."
