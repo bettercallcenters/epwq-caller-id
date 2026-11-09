@@ -1,0 +1,71 @@
+# Sella APP_VERSION en cada despliegue.
+#
+# Existe porque el actualizador automático NUNCA ha funcionado. El código compara la versión
+# de la copia cargada contra la de la página en vivo:
+#
+#     if(m && m[1] && m[1] !== APP_VERSION) showUpdateBanner();
+#
+# ...y APP_VERSION se escribe a mano. Llevaba en 'r69-2026-10-23' a través de todos los
+# cambios que siguieron, los míos incluidos. Las dos cadenas siempre eran idénticas, así que
+# la condición daba false SIEMPRE: ni banner, ni autoUpdateWhenSafe(), nunca.
+#
+# El resultado es que un teléfono que cargó la página una vez se queda ahí para siempre. El
+# propio index.html ya lo documenta: "Divine estuvo un MES en una versión de agosto con la
+# búsqueda de Nuevo México rota, porque nunca recargó". Y el 2026-11-08 Guillermo no podía
+# conectarse con el link nuevo — en una copia anterior al 30 de octubre, el código que lee
+# ese link ni siquiera existe.
+#
+# Una versión escrita a mano es una que alguien va a olvidar. Esta se sella sola.
+name: Sellar versión
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  sellar:
+    # Sin esto se muerde la cola: el commit del bot es otro push, que volvería a disparar
+    # este job. El guard corta la cadena en el primer rebote.
+    if: github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: main
+
+      - name: Poner la versión de este commit
+        run: |
+          set -euo pipefail
+          NUEVA="$(date -u +%Y-%m-%d)-${GITHUB_SHA::7}"
+          ACTUAL="$(grep -oE "var APP_VERSION = '[^']+'" index.html | head -1 | sed "s/.*'\(.*\)'/\1/")"
+          echo "actual: ${ACTUAL:-<ninguna>} → nueva: $NUEVA"
+
+          if [ "$ACTUAL" = "$NUEVA" ]; then
+            echo "Ya está sellada; no hay nada que hacer."
+            exit 0
+          fi
+          if [ -z "$ACTUAL" ]; then
+            echo "::error title=No se encontró APP_VERSION::index.html ya no declara var APP_VERSION — el actualizador automático no puede funcionar sin ella."
+            exit 1
+          fi
+
+          # Solo esa línea. Nada de reescribir el archivo entero.
+          perl -0pi -e "s/var APP_VERSION = '[^']+'/var APP_VERSION = '${NUEVA}'/" index.html
+
+          if ! grep -q "var APP_VERSION = '${NUEVA}'" index.html; then
+            echo "::error title=No se pudo sellar::La sustitución no quedó."
+            exit 1
+          fi
+
+          git config user.name  'github-actions[bot]'
+          git config user.email 'github-actions[bot]@users.noreply.github.com'
+          git add index.html
+          git commit -m "chore: sellar APP_VERSION ${NUEVA}
+
+Automático. Sin esto, la versión no cambia entre despliegues y el aviso de
+'hay versión nueva' no se dispara nunca: los teléfonos se quedan con código viejo
+sin que nadie se entere."
+          git push
