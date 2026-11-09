@@ -41,6 +41,19 @@ jobs:
               exit 0
             fi
             if [ "$estado" = "errored" ]; then
+              # ¿Lo atropelló un commit MÁS NUEVO que sí se publicó?
+              #
+              # Desde que existe "Sellar versión", cada push se sigue de un segundo commit
+              # del bot. Pages cancela el build en curso y marca el primero como "errored",
+              # aunque el sitio quede perfectamente publicado — con el del bot, que es más
+              # nuevo y contiene lo mismo. Sin esta comprobación, CADA subida dejaba una
+              # tacha roja falsa, y una alarma que suena siempre es una que se deja de ver.
+              mio="$(echo "$builds" | jq -r --arg sha "$SHA" '[.[] | select(.commit == $sha)][0].created_at // ""')"
+              nuevo="$(echo "$builds" | jq -r --arg t "$mio" '[.[] | select(.status == "built") | select(.created_at > $t)] | length')"
+              if [ "${nuevo:-0}" -gt 0 ]; then
+                echo "⚠️ El build de este commit se canceló, pero uno más nuevo SÍ se publicó (normalmente el sello de versión). El sitio está en vivo."
+                exit 0
+              fi
               echo "::error title=El sitio NO se publicó::GitHub Pages rechazó este commit: ${error:-sin detalle}. La página sigue sirviendo la versión anterior — lo que acabas de subir NO está en vivo."
               exit 1
             fi
