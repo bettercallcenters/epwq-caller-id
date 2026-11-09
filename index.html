@@ -2069,7 +2069,14 @@ function capturarClaveDelLink(){
     var ma = h.match(/[#&]a=([^&]+)/);
     if (!mt && !ma) return;
     var quedoClave = true;
-    if (mt) quedoClave = guardar('epwq_crm_token', decodeURIComponent(mt[1]).trim());
+    if (mt) {
+      quedoClave = guardar('epwq_crm_token', decodeURIComponent(mt[1]).trim());
+      // Huella con la fecha. Sirve para distinguir 'nunca se conecto aqui' de 'se conecto y
+      // el telefono lo borro' — que es lo que pasa en una pestana privada o cuando Safari
+      // limpia los datos del sitio a los 7 dias. Sin esto los dos casos se ven igual, y el
+      // segundo manda a buscar el link que YA se habia usado.
+      if (quedoClave) guardar('epwq_conectado_el', new Date().toISOString());
+    }
     if (ma) {
       var code = decodeURIComponent(ma[1]).trim().toUpperCase();
       if (code === 'HS' || code === 'GD' || code === 'DV') {
@@ -3098,6 +3105,13 @@ var RC_PRESENCE_URL = CRM_BASE + '/api/rc/presence';
    backend conteste, el identificador esta vivo. Antes decia "sign in to the softphone" y
    por eso parecia caido cada vez que se cerraba la app. */
 var rcPresenciaViva = false, rcIntentos = 0;
+// ?Este equipo YA habia estado conectado? Si quedo la huella pero ya no hay clave, no es
+// que nunca se conectara: el telefono la borro. Son dos problemas distintos y se arreglan
+// distinto — uno pide el link, el otro pide cambiar un ajuste de Safari.
+function seConectoAntes(){
+  try { return !!localStorage.getItem('epwq_conectado_el'); } catch(_){ return false; }
+}
+
 function rcEstadoSinSoftphone(){
   if (rcPresenciaViva) return 'Identificador activo ✔ (no hace falta entrar)';
   // Decir QUE falta, no un "conectando…" eterno.
@@ -3106,7 +3120,9 @@ function rcEstadoSinSoftphone(){
   // red o del servidor. No lo era: el equipo no tenia la clave del CRM, y sin clave esta
   // pantalla no puede preguntar quien esta llamando. El mensaje no distinguia los dos casos,
   // asi que se fueron horas buscando del lado equivocado.
-  if (!crmToken()) return '⚠️ Falta conectar el CRM — abre tu link o toca Conectar';
+  if (!crmToken()) return seConectoAntes()
+    ? '⚠️ Tu teléfono borró la clave — vuelve a pegar tu link'
+    : '⚠️ Falta conectar el CRM — abre tu link o toca Conectar';
   return rcIntentos > 2 ? '⚠️ No se pudo contactar el servidor — reintentando' : 'Identificador: conectando…';
 }
 function rcPintarEstado(){
