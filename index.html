@@ -2125,20 +2125,47 @@ function refreshCrmWarn(){
 }
 function pedirCrmToken(){
   var actual = crmToken();
+  // Pide el LINK, no la clave.
+  //
+  // Antes esto decia "Clave de INGESTA del CRM (INGEST_TOKEN)" — jerga que a un setter no
+  // le dice nada, y que ademas pide lo que nadie tiene a la mano. Lo que SI tienen es el
+  // link que les mando Hector por WhatsApp. El 2026-11-09 Guillermo acabo parado frente a
+  // este cuadro sin saber que escribir.
+  //
+  // Acepta las dos cosas: el link completo o la clave suelta. Y si el link trae tambien el
+  // codigo de agente (&a=GD), se aplica de paso — asi queda conectado Y identificado.
   var v = prompt(
-    'Clave de INGESTA del CRM (INGEST_TOKEN).\n\n' +
-    'Se guarda solo en este equipo y sirve para que las citas queden guardadas en el CRM.\n' +
-    'Pídesela a Hector. Deja el campo vacío para desconectar.',
-    actual);
+    'Pega aquí el link que te mandó Hector.\n\n' +
+    'Es el que empieza con https://bettercallcenters.github.io/…\n' +
+    'Déjalo vacío para desconectar este equipo.',
+    '');
   if (v === null) return;                       // canceló
+  v = String(v).trim();
+
+  // ¿Pegaron el link? Se le saca la clave (y el agente, si viene).
+  var delLink = v.match(/[#&?]t=([^&\s]+)/);
+  if (delLink) {
+    var ag = v.match(/[#&?]a=([^&\s]+)/);
+    if (ag) {
+      var code = decodeURIComponent(ag[1]).trim().toUpperCase();
+      if (code === 'HS' || code === 'GD' || code === 'DV') {
+        try {
+          localStorage.setItem('epwq_agent', code);
+          state.agent = code; segMark('agentSeg','agent',code);
+          if (typeof buildMsg === 'function') buildMsg();
+        } catch(_){}
+      }
+    }
+    v = decodeURIComponent(delLink[1]);
+  }
   // El teclado del telefono mete espacios y saltos al pegar; el autocorrector a veces
   // capitaliza la primera letra. Se limpia aqui porque el que pega no lo ve.
-  v = String(v).replace(/\s+/g, '').trim();
+  v = v.replace(/\s+/g, '').trim();
   if (v) {
     var problema = null;
-    if (/^Ig_/.test(v))            problema = 'El autocorrector te puso mayúscula: debe empezar con ig_ minúscula.';
-    else if (!/^ig_/.test(v))      problema = 'Esa no parece la clave — las del CRM empiezan con ig_.';
-    else if (v.length < 40)        problema = 'Se pegó incompleta (' + v.length + ' caracteres, deben ser ~51). Cópiala otra vez.';
+    if (/^Ig_/.test(v))            problema = 'Se pegó con mayúscula al principio. Vuelve a copiar el link completo.';
+    else if (!/^ig_/.test(v))      problema = 'Eso no parece el link. Copia el que te mandó Hector, completo, desde https://';
+    else if (v.length < 40)        problema = 'El link se pegó cortado. Cópialo otra vez, completo.';
     if (problema) { alert('⚠️ ' + problema); return; }
   }
   // Guardar Y VOLVER A LEER. Antes solo se guardaba: si el navegador no deja (modo privado,
