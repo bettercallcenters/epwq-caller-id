@@ -2053,15 +2053,23 @@ var CRM_BASE      = 'https://sdcc-integrations-production.up.railway.app';
    habia que "volver a entrar": sin softphone, nadie le decia a la app quien eras.
    Con la "a" en el link, cada quien abre el suyo UNA vez y queda. */
 function capturarClaveDelLink(){
+  // Guarda Y VUELVE A LEER. Antes esto era try/catch vacio: si el telefono no dejaba
+  // guardar, no se guardaba nada y NADIE SE ENTERABA — ni el que abrio el link ni yo.
+  // Devuelve true solo si de verdad quedo escrito.
   var guardar = function (clave, valor) {
-    try { if (valor) localStorage.setItem(clave, valor); } catch(_){}
+    if (!valor) return true;
+    try {
+      localStorage.setItem(clave, valor);
+      return (localStorage.getItem(clave) || '') === valor;
+    } catch(_){ return false; }
   };
   try {
     var h = location.hash || '';
     var mt = h.match(/[#&]t=([^&]+)/);
     var ma = h.match(/[#&]a=([^&]+)/);
     if (!mt && !ma) return;
-    if (mt) guardar('epwq_crm_token', decodeURIComponent(mt[1]).trim());
+    var quedoClave = true;
+    if (mt) quedoClave = guardar('epwq_crm_token', decodeURIComponent(mt[1]).trim());
     if (ma) {
       var code = decodeURIComponent(ma[1]).trim().toUpperCase();
       if (code === 'HS' || code === 'GD' || code === 'DV') {
@@ -2075,6 +2083,21 @@ function capturarClaveDelLink(){
           if (typeof buildMsg === 'function') buildMsg();
         } catch(_){}
       }
+    }
+    // La clave NO se borra de la direccion hasta confirmar que quedo guardada.
+    // Antes se borraba siempre, asi que cuando el telefono no dejaba guardar se destruia la
+    // unica copia que habia — y la pantalla se quedaba pidiendo una clave que acababa de
+    // tirar a la basura. El 2026-11-08 se fueron horas en eso.
+    if (!quedoClave) {
+      alert('⚠️ Este teléfono no está dejando guardar la clave.\n\n' +
+            'Casi siempre es una de dos:\n' +
+            '· Estás en una pestaña privada — ciérrala y abre el link en una normal.\n' +
+            '· Safari tiene bloqueado guardar datos de sitios.\n\n' +
+            'En el iPhone: Ajustes → Safari →\n' +
+            '   · apaga "Bloquear todas las cookies"\n' +
+            '   · apaga "Impedir seguimiento entre sitios"\n\n' +
+            'Tu link sigue en la barra de arriba: no lo pierdas, vuelve a abrirlo después de cambiar eso.');
+      return false;
     }
     history.replaceState(null, '', location.pathname + location.search);
     if (typeof refreshCrmWarn === 'function') refreshCrmWarn();
