@@ -63,9 +63,7 @@ jobs:
           git config user.name  'github-actions[bot]'
           git config user.email 'github-actions[bot]@users.noreply.github.com'
           git add index.html
-          git commit -m "chore: sellar APP_VERSION ${NUEVA}
-
-Automático. Sin esto, la versión no cambia entre despliegues y el aviso de
-'hay versión nueva' no se dispara nunca: los teléfonos se quedan con código viejo
-sin que nadie se entere."
+          git commit \
+            -m "chore: sellar APP_VERSION ${NUEVA}" \
+            -m "Automatico. Sin esto la version no cambia entre despliegues y el aviso de 'hay version nueva' no se dispara nunca: los telefonos se quedan con codigo viejo sin que nadie se entere."
           git push
