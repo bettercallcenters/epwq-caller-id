@@ -253,6 +253,7 @@
         <button class="btn ghost sm" id="muteBtn">🔊 Sound: on</button>
         <button class="btn ghost sm" id="testAlert">▶︎ Test</button>
         <button class="btn ghost sm" id="crmCfg" title="Conectar esta tableta/teléfono con el CRM">🔗 CRM</button>
+        <button class="btn ghost sm" id="crmInstall" title="Pone la clave de vuelta en la dirección para que el ícono de la pantalla de inicio la guarde">📲 Poner en pantalla de inicio</button>
         <button class="btn ghost sm" id="crmShareLink" title="Copiar un link para conectar OTROS equipos (contiene la clave — mándalo en privado)">📋 Link de conexión</button>
         <button class="btn sm" id="clearAll" style="margin-left:auto;background:#fee2e2;color:#b91c1c;border:1px solid #fca5a5;font-weight:800">🧹 Clear all</button>
       </div>
@@ -2047,7 +2048,7 @@ var CRM_BASE      = 'https://sdcc-integrations-production.up.railway.app';
    HS/GD/DV a mano, o preguntandole al softphone de RingCentral. Por eso se sentia que
    habia que "volver a entrar": sin softphone, nadie le decia a la app quien eras.
    Con la "a" en el link, cada quien abre el suyo UNA vez y queda. */
-(function capturarClaveDelLink(){
+function capturarClaveDelLink(){
   var guardar = function (clave, valor) {
     try { if (valor) localStorage.setItem(clave, valor); } catch(_){}
   };
@@ -2072,8 +2073,27 @@ var CRM_BASE      = 'https://sdcc-integrations-production.up.railway.app';
       }
     }
     history.replaceState(null, '', location.pathname + location.search);
+    if (typeof refreshCrmWarn === 'function') refreshCrmWarn();
+    return true;
   } catch(_){ /* sin localStorage (privado/bloqueado) se sigue pudiendo pegar a mano */ }
-})();
+  return false;
+}
+capturarClaveDelLink();
+
+// Y OTRA VEZ si el # llega despues.
+//
+// Si la app YA esta abierta y tocas tu link, el navegador NO recarga la pagina: solo cambia
+// el fragmento. La funcion de arriba corre al cargar, asi que en ese caso nunca se entera y
+// el link "no hace nada" — que es justo lo que le paso a Hector el 2026-11-08: "lo estoy
+// abriendo y sigue saliendo igual, me dice pick an agent".
+//
+// Nadie tiene por que saber que hay que cerrar la pestana primero. Con esto el link sirve
+// este la app abierta o cerrada.
+window.addEventListener('hashchange', function(){
+  if (capturarClaveDelLink()) {
+    try { toast('🔗 Equipo conectado' + (state.agent ? ' — eres ' + state.agent : '')); } catch(_){}
+  }
+});
 
 function crmToken(){
   try { return (localStorage.getItem('epwq_crm_token') || '').trim(); } catch(_){ return ''; }
@@ -2200,8 +2220,36 @@ function pedirCrmToken(){
 function linkDeConexion(){
   var tok = crmToken();
   if (!tok) return '';
-  return location.origin + location.pathname + '#t=' + encodeURIComponent(tok);
+  // Tambien el agente, si este equipo ya sabe quien es: asi el que lo abra queda conectado
+  // Y identificado de una vez, sin tener que picarle a HS/GD/DV.
+  var ag = '';
+  try { ag = (localStorage.getItem('epwq_agent') || '').trim(); } catch(_){}
+  return location.origin + location.pathname + '#t=' + encodeURIComponent(tok)
+       + (ag ? '&a=' + encodeURIComponent(ag) : '');
 }
+/* Instalar como app SIN perder la clave.
+   Hector, 2026-11-08: "si sirve cuando aprieto el link, pero cuando le pongo share → add to
+   home screen y lo abro como app, ya no sirve".
+   El motivo: el icono guarda la direccion que hay EN ESE MOMENTO, y para entonces la app ya
+   le borro la clave del # (se quita a proposito para que no quede en el historial). El icono
+   nacia sin clave. Y en iOS una app de pantalla de inicio ademas guarda sus datos aparte de
+   Safari, asi que tampoco hereda la que ya estaba guardada.
+   Esto devuelve la clave a la barra de direcciones justo antes de instalar. */
+function instalarEnPantalla(){
+  var link = linkDeConexion();
+  if (!link){
+    toast('Primero conecta este equipo (toca 🔗 CRM o pega tu link).');
+    return;
+  }
+  try { history.replaceState(null, '', link.slice(link.indexOf('#'))); } catch(_){}
+  alert('📲 Para dejarlo como app en tu teléfono:\n\n' +
+        '1. Toca el botón de Compartir (el cuadrito con la flecha)\n' +
+        '2. Elige "Añadir a pantalla de inicio"\n' +
+        '3. Dale Añadir\n\n' +
+        'Ya puse tu clave de vuelta en la dirección para que el ícono la guarde. ' +
+        'Si lo instalas sin esto, el ícono abre sin clave y hay que volver a conectarlo.');
+}
+
 function copiarLinkConexion(){
   var link = linkDeConexion();
   if (!link){
@@ -3738,6 +3786,7 @@ if($('trClear')) $('trClear').addEventListener('click', function(){
 if($('clearAll')) $('clearAll').addEventListener('click', doClearAll);
 if($('crmCfg')) $('crmCfg').addEventListener('click', pedirCrmToken);
 if($('crmShareLink')) $('crmShareLink').addEventListener('click', copiarLinkConexion);
+  if($('crmInstall')) $('crmInstall').addEventListener('click', instalarEnPantalla);
 if($('crmWarnFix')) $('crmWarnFix').addEventListener('click', pedirCrmToken);
 if($('guardRestore')) $('guardRestore').addEventListener('click', restoreCapture);
 if($('guardDismiss')) $('guardDismiss').addEventListener('click', hideGuardBar);
