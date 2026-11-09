@@ -263,22 +263,8 @@
         <button class="btn ghost sm" id="crmWarnFix" style="margin-left:auto">🔗 Conectar</button>
       </div>
 
-      <!-- ===== LIVE TRANSCRIPT (arriba de "Where is the call from") ===== -->
-      <div class="field" style="border:1px solid var(--line);border-radius:10px;padding:9px 11px;background:var(--soft)">
-        <div id="trBlock">
-          <div style="display:flex;gap:7px;align-items:center;flex-wrap:wrap;margin-bottom:6px">
-            <span class="badge" style="background:#dcfce7;color:#166534;font-weight:700">🎧 Transcript · auto on answer</span>
-            <button class="btn ghost sm" id="trBtn" style="font-size:11px;opacity:.7">start manually</button>
-            <button class="btn ghost sm" id="trClear" style="margin-left:auto">🗑️ Clear</button>
-          </div>
-          <div class="hintline" id="trStatus" style="margin:0 0 6px">Arms on your <b>first answered call</b> (share the tab once). After that every call transcribes automatically.</div>
-          <div id="dgMeters" style="display:none;gap:14px;margin:0 0 6px;font-size:12px;color:var(--muted)">
-            <div style="flex:1">🎤 You (mic)<div class="meterTrack"><div id="meterMic" class="meterFill"></div></div></div>
-            <div style="flex:1">📞 Call (client)<div class="meterTrack"><div id="meterCall" class="meterFill"></div></div></div>
-          </div>
-          <div id="trHUD" style="height:170px;min-height:90px;max-height:560px;resize:vertical;overflow:auto;background:#0f172a;color:#e2e8f0;border-radius:10px;padding:10px;font-size:14px;line-height:1.5"></div>
-        </div>
-      </div>
+      <!-- El transcript en vivo se quito el 2026-11-09: no se estaba usando. La idea era
+           oir la direccion cuando viene dificil, pero nunca llego a servir para eso. -->
 
       <!-- County -->
       <div class="field">
@@ -469,26 +455,10 @@
     </div>
 
     <!-- Softphone de RingCentral EMBEBIDO y grande -->
-    <!-- Plegado a proposito. El identificador YA NO lo necesita: quien esta llamando sale
-         de /api/rc/presence, que el backend sirve con su propio JWT. Abierto, este panel
-         pedia "Sign In" cada vez que se cerraba la app y daba la impresion de que el
-         sistema estaba desconectado, cuando lo de abajo llevaba rato funcionando solo.
-         Se abre nada mas si alguien quiere CONTESTAR o COLGAR desde aqui. -->
-    <details class="card" id="rcCard">
-      <summary style="cursor:pointer;list-style:none;padding:0">
-        <h2 style="margin:0">📞 RingCentral softphone
-          <span style="margin-left:8px;font-weight:600;font-size:12px;color:var(--muted)">opcional — toca para abrir</span>
-          <button class="btn ghost sm" id="rcCfg" style="margin-left:auto" title="Usa tu propia app de RingCentral para que la sesión dure 7 días en vez de 1 hora">⚙️ Sign-in</button>
-        </h2>
-      </summary>
-      <div class="body" style="padding:8px">
-        <div class="hintline" style="margin:0 0 8px">
-          <b>No hace falta entrar aquí.</b> Quién está llamando ya sale solo, abajo y arriba,
-          sin iniciar sesión. Esto es únicamente para contestar o colgar desde la app.
-        </div>
-        <div id="rcMount" style="width:100%;height:540px;background:#f1f5f9;border-radius:12px"></div>
-      </div>
-    </details>
+    <!-- El softphone de RingCentral se quito el 2026-11-09. No se usaba, y su boton
+         "Sign-in" hacia creer que habia que iniciar sesion para que el identificador
+         funcionara. No hace falta: quien esta llamando sale de /api/rc/presence, que el
+         backend sirve con su propio JWT. Ver Team status aqui abajo. -->
 
     <!-- HUD de equipo: quién está en llamada -->
     <div class="card">
@@ -3446,16 +3416,23 @@ function prettyPhone(s){
 var transcriber=null, trStream=null, trCtx=null, trNode=null, trSink=null, trBuf=[], trRunning=false, trBusy=false, trLastAddr='';
 var TR_SR=16000, TR_CHUNK=TR_SR*5;   // procesa cada ~5 seg
 
-function trSetStatus(t){ $('trStatus').innerHTML = t; }
+// El panel del transcript se quito el 2026-11-09. El motor queda dormido —dgArmed y
+// callIsActive los usan otras partes— pero no hay nada que pintar.
+function trSetStatus(t){ var e = $('trStatus'); if(e) e.innerHTML = t; }
 // URL de tu Supabase que entrega la key de Deepgram (server-side, con candado de dominio).
 // Si está puesta → usa Deepgram (calidad, quién habla). Si se vacía → usa Whisper gratis.
 var DEEPGRAM_KEY_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/dg-key';
-$('trBtn').addEventListener('click', function(){
+if($('trBtn')) $('trBtn').addEventListener('click', function(){
   if(DEEPGRAM_KEY_URL){ dgArmed ? dgDisarm() : dgArm(); }
   else { trRunning ? trStop() : trStart(); }
 });
 
 async function trStart(){
+  // El panel del transcript se quito el 2026-11-09 (no se estaba usando). Sin pantalla
+  // no hay nada que arrancar: se sale aqui en vez de tronar mas abajo buscando botones
+  // que ya no existen. El motor sigue en el archivo porque dgArmed y callIsActive los usan
+  // otras partes del identificador.
+  if(!$('trBtn')) return;
   $('trBtn').disabled=true;
   try{
     trStream = await navigator.mediaDevices.getDisplayMedia({
@@ -3725,7 +3702,7 @@ var dgLevel=[0,0], dgMeterTimer=null, dgClientBuf='';
 // Nombre del agente para transcript/team status — sale del switch HS/GD/DV (ya no de un campo de texto)
 function agentLabel(){ return (AGENT_NAMES||{})[state.agent] || ''; }
 
-$('trClear').addEventListener('click', function(){
+if($('trClear')) $('trClear').addEventListener('click', function(){
   var el=$('trHUD'); el.innerHTML=''; el.dataset.full=''; el.dataset.last='';
   $('addrSuggest').style.display='none';
   dgClientBuf=''; trLastAddr='';
@@ -3752,6 +3729,11 @@ function clamp16(f){ var s=Math.max(-1,Math.min(1,f)); return s<0 ? s*0x8000 : s
 
 // ARM (un clic): consigue micrófono + audio de la pestaña una vez. Luego AUTO-transcribe cada llamada.
 async function dgArm(){
+  // El panel del transcript se quito el 2026-11-09 (no se estaba usando). Sin pantalla
+  // no hay nada que arrancar: se sale aqui en vez de tronar mas abajo buscando botones
+  // que ya no existen. El motor sigue en el archivo porque dgArmed y callIsActive los usan
+  // otras partes del identificador.
+  if(!$('trBtn')) return;
   $('trBtn').disabled=true;
   try{
     trSetStatus('⏳ Getting microphone + tab audio…');
