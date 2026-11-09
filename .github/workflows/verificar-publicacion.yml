@@ -40,26 +40,38 @@ jobs:
               echo "✅ Publicado."
               exit 0
             fi
-            if [ "$estado" = "errored" ]; then
-              # ¿Lo atropelló un commit MÁS NUEVO que sí se publicó?
-              #
-              # Desde que existe "Sellar versión", cada push se sigue de un segundo commit
-              # del bot. Pages cancela el build en curso y marca el primero como "errored",
-              # aunque el sitio quede perfectamente publicado — con el del bot, que es más
-              # nuevo y contiene lo mismo. Sin esta comprobación, CADA subida dejaba una
-              # tacha roja falsa, y una alarma que suena siempre es una que se deja de ver.
-              mio="$(echo "$builds" | jq -r --arg sha "$SHA" '[.[] | select(.commit == $sha)][0].created_at // ""')"
+            # ¿Lo atropelló un commit MÁS NUEVO que sí se publicó?
+            #
+            # Desde que existe "Sellar versión", cada push se sigue de un segundo commit del
+            # bot. Pages cancela el build en curso y marca el primero como "errored", aunque
+            # el sitio quede perfectamente publicado — con el del bot, que es más nuevo y
+            # trae lo mismo. Sin esta comprobación, CADA subida dejaba tacha roja falsa, y
+            # una alarma que suena siempre es una que se deja de ver.
+            #
+            # Se comprueba en CADA vuelta, no solo al ver el error: cuando el nuestro se
+            # marca 'errored', el build del sello todavía no existe. El primer intento
+            # salía con exit 1 antes de que apareciera, y por eso seguía dando rojo.
+            mio="$(echo "$builds" | jq -r --arg sha "$SHA" '[.[] | select(.commit == $sha)][0].created_at // ""')"
+            if [ -n "$mio" ]; then
               nuevo="$(echo "$builds" | jq -r --arg t "$mio" '[.[] | select(.status == "built") | select(.created_at > $t)] | length')"
               if [ "${nuevo:-0}" -gt 0 ]; then
-                echo "⚠️ El build de este commit se canceló, pero uno más nuevo SÍ se publicó (normalmente el sello de versión). El sitio está en vivo."
+                echo "⚠️ El build de este commit no quedó, pero uno más nuevo SÍ se publicó (normalmente el sello de versión). El sitio está en vivo."
                 exit 0
               fi
-              echo "::error title=El sitio NO se publicó::GitHub Pages rechazó este commit: ${error:-sin detalle}. La página sigue sirviendo la versión anterior — lo que acabas de subir NO está en vivo."
-              exit 1
+            fi
+
+            # 'errored' ya no sale de inmediato: se sigue esperando por si el sello llega
+            # detrás. Si al final de los 5 minutos nadie se publicó, ahí sí es un fallo real.
+            if [ "$estado" = "errored" ]; then
+              ultimo_error="${error:-sin detalle}"
             fi
             sleep 10
           done
 
+          if [ -n "${ultimo_error:-}" ]; then
+            echo "::error title=El sitio NO se publicó::GitHub Pages rechazó este commit: ${ultimo_error}. Y en 5 minutos tampoco se publicó ningún commit más nuevo — la página sigue sirviendo la versión anterior."
+            exit 1
+          fi
           echo "::error title=El build no terminó::Pasaron 5 minutos y Pages no reportó resultado para este commit. Revisa https://github.com/${GITHUB_REPOSITORY}/deployments — no des por hecho que está publicado."
           exit 1
 
