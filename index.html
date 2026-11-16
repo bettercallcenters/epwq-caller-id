@@ -172,7 +172,7 @@
     <h1>Call Identifier · EPWQ</h1>
     <div class="sub">Live owner ID · EPCAD / Doña Ana · USPhonebook · Auto appointment message</div>
   </div>
-  <div class="who">Users: Guillermo · Divine · Treasure · Hector<br><span id="rcStatus">Identificador: conectando…</span></div>
+  <div class="who"><span id="whoLine">&nbsp;</span><br><span id="rcStatus">Identificador: conectando…</span></div>
 </header>
 
 <!-- Alerta: bot de WhatsApp desconectado (necesita re-escaneo) -->
@@ -505,6 +505,36 @@ var state = {
 
 // Código de agente → nombre (para transcript y team status; sale del switch HS/GD/DV)
 var AGENT_NAMES = { HS:'Hector', GD:'Guillermo', DV:'Divine', TR:'Treasure' };
+
+/* ── Quien ve a quien ──────────────────────────────────────────────────────────────
+   Cada setter abre SU link y ve SU identificador, no la plantilla del equipo: no tienen
+   por que enterarse de quien mas esta en turno. Hector y Guillermo si ven a todos — son
+   los que cubren las llamadas y necesitan saber quien esta libre.
+
+   OJO: esto es lo que se PINTA en pantalla, no un candado. Quien abra el codigo de la
+   pagina puede ver la lista completa. Sirve para que no salga en su pantalla; no sirve
+   para guardarle un secreto a alguien que lo vaya a buscar. */
+var VE_AL_EQUIPO = { HS:1, GD:1 };
+function puedeVerAgente(code){
+  if (VE_AL_EQUIPO[state.agent]) return true;
+  return code === state.agent;
+}
+function codigoDeExt(ext){
+  for (var k in AGENT_EXT) if (String(AGENT_EXT[k]) === String(ext)) return k;
+  return '';
+}
+function pintarQuienSoy(){
+  var w = document.getElementById('whoLine');
+  if (w) {
+    w.textContent = VE_AL_EQUIPO[state.agent]
+      ? 'Users: ' + Object.keys(AGENT_NAMES).map(function(k){ return AGENT_NAMES[k]; }).join(' · ')
+      : (AGENT_NAMES[state.agent] || '');
+  }
+  var seg = document.getElementById('agentSeg');
+  if (seg) Array.prototype.forEach.call(seg.querySelectorAll('button'), function(b){
+    b.style.display = puedeVerAgente(b.dataset.agent) ? '' : 'none';
+  });
+}
 
 // Cajas geográficas para sesgar las sugerencias (lon1,lat1,lon2,lat2)
 var VIEWBOX = {
@@ -1774,10 +1804,10 @@ function langFromDgMessage(d, text){
 }
 $('roleSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.role=b.dataset.role; segMark('roleSeg','role',state.role); buildMsg(); });
 $('waterSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.water=(state.water===b.dataset.water)?'':b.dataset.water; segMark('waterSeg','water',state.water); buildMsg(); });
-$('agentSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.agent=b.dataset.agent; segMark('agentSeg','agent',state.agent); try{ localStorage.setItem('epwq_agent', state.agent); }catch(_){}; buildMsg(); });
+$('agentSeg').addEventListener('click', function(e){ var b=e.target.closest('button'); if(!b) return; state.agent=b.dataset.agent; segMark('agentSeg','agent',state.agent); try{ localStorage.setItem('epwq_agent', state.agent); }catch(_){}; pintarQuienSoy(); buildMsg(); });
 function setRole(r){ state.role=r; segMark('roleSeg','role',r); buildMsg(); }
 // Recordar el agente por navegador (respaldo si RingCentral no está logueado)
-(function(){ try{ var a=localStorage.getItem('epwq_agent'); if(a){ state.agent=a; segMark('agentSeg','agent',a); } }catch(_){} })();
+(function(){ try{ var a=localStorage.getItem('epwq_agent'); if(a){ state.agent=a; segMark('agentSeg','agent',a); } }catch(_){} pintarQuienSoy(); })();
 
 /* Detectar automáticamente el agente según QUIÉN inició sesión en RingCentral.
    RingCentral Embeddable deja consultar la extensión logueada por postMessage. */
@@ -1796,7 +1826,7 @@ function applyDetectedAgent(name, ext, source, lock){
   var note=$('agentAuto');
   if(!code){ return; }   // nombre desconocido → deja lo que haya (switch manual)
   if(lock) window.__agentDetected = true;   // RingCentral confirmado → deja de reintentar
-  state.agent = code; segMark('agentSeg','agent',code);
+  state.agent = code; segMark('agentSeg','agent',code); pintarQuienSoy();
   try{ localStorage.setItem('epwq_agent', code); }catch(_){}
   if(note){ note.style.display=''; note.textContent='✔ You are posting as '+code+' — '+(name || ('ext '+ext))+' (auto, from '+(source||'RingCentral')+')'; }
   buildMsg();
@@ -2206,7 +2236,7 @@ function pedirCrmToken(){
       if (AGENT_NAMES[code]) {
         try {
           localStorage.setItem('epwq_agent', code);
-          state.agent = code; segMark('agentSeg','agent',code);
+          state.agent = code; segMark('agentSeg','agent',code); pintarQuienSoy();
           if (typeof buildMsg === 'function') buildMsg();
         } catch(_){}
       }
@@ -3024,7 +3054,7 @@ function renderTeam(rows){
    The dispatch backend is already authenticated to RC (JWT); rc-caller proxies its
    per-extension presence: [{ name, ext, state:'idle'|'incoming'|'active', who, sessionId }]. */
 var RC_CALLER_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/functions/v1/rc-caller';
-var AGENT_EXT = { HS:'101', GD:'124', DV:'127' };   // agent code → RingCentral extension
+var AGENT_EXT = { HS:'101', GD:'124', DV:'127', TR:'128' };   // agent code → RingCentral extension
 
 function renderTeamRC(d){
   var box = $('teamList'); if(!box) return;
@@ -3032,7 +3062,10 @@ function renderTeamRC(d){
     box.innerHTML = '<span style="color:var(--muted);font-size:13px">Team status unavailable — retrying…</span>';
     teamAlerted = false; return;
   }
-  var agents = d.agents || [];
+  var agents = (d.agents || []).filter(function(a){
+    var code = codigoDeExt(a.ext);
+    return code ? puedeVerAgente(code) : VE_AL_EQUIPO[state.agent];   // desconocido: solo al equipo
+  });
   if(!agents.length){ box.innerHTML = '<span style="color:var(--muted);font-size:13px">No agents found.</span>'; teamAlerted=false; return; }
   var meExt = AGENT_EXT[state.agent] || '';
   box.innerHTML = agents.map(function(a){
