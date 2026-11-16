@@ -172,7 +172,7 @@
     <h1>Call Identifier · EPWQ</h1>
     <div class="sub">Live owner ID · EPCAD / Doña Ana · USPhonebook · Auto appointment message</div>
   </div>
-  <div class="who">Users: Guillermo · Divine · Hector<br><span id="rcStatus">Identificador: conectando…</span></div>
+  <div class="who">Users: Guillermo · Divine · Treasure · Hector<br><span id="rcStatus">Identificador: conectando…</span></div>
 </header>
 
 <!-- Alerta: bot de WhatsApp desconectado (necesita re-escaneo) -->
@@ -442,6 +442,7 @@
             <button data-agent="HS">HS · Hector</button>
             <button data-agent="GD">GD · Guillermo</button>
             <button data-agent="DV">DV · Divine</button>
+            <button data-agent="TR">TR · Treasure</button>
           </div>
           <div id="agentAuto" style="display:none;font-size:11px;color:#1a7a3a;margin-top:4px;font-weight:600"></div>
         </div>
@@ -503,7 +504,7 @@ var state = {
 };
 
 // Código de agente → nombre (para transcript y team status; sale del switch HS/GD/DV)
-var AGENT_NAMES = { HS:'Hector', GD:'Guillermo', DV:'Divine' };
+var AGENT_NAMES = { HS:'Hector', GD:'Guillermo', DV:'Divine', TR:'Treasure' };
 
 // Cajas geográficas para sesgar las sugerencias (lon1,lat1,lon2,lat2)
 var VIEWBOX = {
@@ -2079,7 +2080,7 @@ function capturarClaveDelLink(){
     }
     if (ma) {
       var code = decodeURIComponent(ma[1]).trim().toUpperCase();
-      if (code === 'HS' || code === 'GD' || code === 'DV') {
+      if (AGENT_NAMES[code]) {
         guardar('epwq_agent', code);
         // Y se aplica YA. El restaurador de epwq_agent corre mas arriba en el archivo, o
         // sea ANTES que esto, asi que guardarlo nada mas no serviria hasta la siguiente
@@ -2202,7 +2203,7 @@ function pedirCrmToken(){
     var ag = v.match(/[#&?]a=([^&\s]+)/);
     if (ag) {
       var code = decodeURIComponent(ag[1]).trim().toUpperCase();
-      if (code === 'HS' || code === 'GD' || code === 'DV') {
+      if (AGENT_NAMES[code]) {
         try {
           localStorage.setItem('epwq_agent', code);
           state.agent = code; segMark('agentSeg','agent',code);
