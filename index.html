@@ -3109,6 +3109,27 @@ function rcCallerDetect(d){
   var ext = AGENT_EXT[state.agent]; if(!ext) return;   // sin código de agente no sabemos tu extensión
   var me = d.agents.filter(function(a){ return String(a.ext)===String(ext); })[0];
   if(!me) return;
+
+  /* YA CONTESTO ALGUIEN → callate.
+     Las llamadas entran por cola: suenan en TODOS a la vez. Cuando un companero la toma,
+     su extension pasa a 'active' con ESE mismo numero y la mia deberia volver a 'idle'.
+     Pero el dato de presencia llega con retraso, asi que mi app seguia viendo "sonando" y
+     seguia timbrando un buen rato despues de que ya estaban hablando. Si alguien mas ya
+     esta en llamada con el numero que a mi me suena, la llamada ya no es mia: se corta el
+     timbre y se limpia el letrero de una vez, sin esperar a que la presencia se actualice. */
+  if (me.state === 'incoming' && me.who) {
+    var laTomoOtro = d.agents.some(function(a){
+      return String(a.ext) !== String(ext) && a.state === 'active' &&
+             String(a.who || '').replace(/\D/g,'').slice(-10) === String(me.who).replace(/\D/g,'').slice(-10);
+    });
+    if (laTomoOtro) {
+      rcPollKey = '';
+      try{ alertStop(); }catch(_){}
+      if (callInProgress) { try{ callEnded(); }catch(_){} }
+      return;
+    }
+  }
+
   var onCall = (me.state==='incoming' || me.state==='active') && !!me.who;
   if(onCall){
     rcIdleTicks = 0;
@@ -3133,7 +3154,10 @@ function rcCallerDetect(d){
     }
   } else if(me.state==='idle'){
     rcPollKey = '';
-    // Dos sondeos seguidos en idle antes de dar la llamada por terminada (la presencia parpadea)
+    // El TIMBRE se calla al PRIMER sondeo en idle: si ya no me esta sonando, no hay por que
+    // seguir haciendo ruido. Limpiar el letrero y el formulario SI sigue esperando dos
+    // sondeos, porque la presencia parpadea y un parpadeo no debe borrar lo capturado.
+    try{ alertStop(); }catch(_){}
     if(callInProgress && ++rcIdleTicks >= 2){ rcIdleTicks = 0; callEnded(); }
   }
 }
