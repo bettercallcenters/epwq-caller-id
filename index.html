@@ -2723,16 +2723,36 @@ function acSleep(){
   }, 1500);
 }
 
+/* Timbre de telefono de verdad, no un pitido.
+   Antes era un solo tono de 880 Hz con corte seco: sonaba a alarma barata. Un telefono de
+   Estados Unidos timbra con DOS tonos juntos, 440 y 480 Hz; al sonar a la vez dan ese
+   "brrring" cálido que el oído reconoce. Se les mete un filtro suave para quitarles lo
+   metálico y una entrada/salida de 25 ms para que no truene al empezar ni al cortar. */
 function beep(t,dur,freq){
   var o=ac.createOscillator(), g=ac.createGain();
   o.type='sine'; o.frequency.value=freq; o.connect(g); g.connect(ac.destination);
   g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.3,t+0.02);
   g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.start(t); o.stop(t+dur+0.02);
 }
+function ringTone(t, dur){
+  var g=ac.createGain(), f=ac.createBiquadFilter();
+  f.type='lowpass'; f.frequency.value=1400; f.Q.value=0.7;
+  f.connect(g); g.connect(ac.destination);
+  [440, 480].forEach(function(hz){
+    var o=ac.createOscillator();
+    o.type='sine'; o.frequency.value=hz; o.connect(f);
+    o.start(t); o.stop(t+dur+0.05);
+  });
+  g.gain.setValueAtTime(0.0001, t);
+  g.gain.exponentialRampToValueAtTime(0.22, t+0.025);          // entra suave
+  g.gain.setValueAtTime(0.22, t+dur-0.04);
+  g.gain.exponentialRampToValueAtTime(0.0001, t+dur);          // y sale suave
+}
 function ringCycle(){
   if(!ringOn || !ac) return;
-  var t=ac.currentTime; beep(t,0.4,880); beep(t+0.5,0.4,880);   // “ring-ring”
-  ringLoop=setTimeout(ringCycle, 2200);
+  var t=ac.currentTime;
+  ringTone(t, 0.9); ringTone(t+1.1, 0.9);     // "brrring … brrring"
+  ringLoop=setTimeout(ringCycle, 3400);        // y una pausa como la de un telefono
 }
 function ringStart(){
   if(ringOn || !soundOn) return;
