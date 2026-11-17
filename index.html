@@ -530,6 +530,19 @@ function pintarQuienSoy(){
       ? 'Users: ' + Object.keys(AGENT_NAMES).map(function(k){ return AGENT_NAMES[k]; }).join(' · ')
       : (AGENT_NAMES[state.agent] || '');
   }
+  /* El nombre de cada quien arriba y en la pestaña. Importa de verdad en el telefono: el
+     icono de "pantalla de inicio" se queda con el titulo que hay al instalarlo, asi que a
+     Divine le dice "Divine · Call Identifier" y no el generico del equipo. */
+  var nombre = AGENT_NAMES[state.agent] || '';
+  var titulo = nombre ? (nombre + ' · Call Identifier') : 'Call Identifier · EPWQ';
+  var h1 = document.querySelector('header h1');
+  if (h1) h1.textContent = titulo;
+  try {
+    document.title = titulo;
+    // El parpadeo de llamada entrante restaura ORIG_TITLE al terminar: si no se actualiza
+    // aqui, al colgar la pestaña volveria al titulo viejo y se perderia el nombre.
+    ORIG_TITLE = titulo;
+  } catch(_){}
   var seg = document.getElementById('agentSeg');
   if (seg) Array.prototype.forEach.call(seg.querySelectorAll('button'), function(b){
     b.style.display = puedeVerAgente(b.dataset.agent) ? '' : 'none';
