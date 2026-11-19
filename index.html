@@ -1241,20 +1241,32 @@ function gisNorm(cfg, feats){
   return feats || [];
 }
 // Dirección de la casa: unas capas la guardan completa, otras en número + calle
+/* LA MISMA CALLE, ESCRITA DE DOS FORMAS.
+   En el padrón de Doña Ana conviven "REXVIEW RD" (14 casas) y "REX VIEW RD" (6), y buscando
+   '%REXVIEW%' se perdían esas 6 — entre ellas 5619 REX VIEW RD (PAYAN NOEMI), justo la que
+   se andaba buscando. Al revés no pasa: si el agente teclea "Rex View" se parte en dos
+   palabras y ambas aparecen en las dos escrituras. Así que solo hay que cubrir el caso de
+   UNA palabra pegada: se prueban también las variantes con un espacio metido en cada
+   posición ("REX VIEW", "REXV IEW", …). Son pocas y el servidor las resuelve igual de
+   rápido que una sola. */
+function likeAny(field, word){
+  var w = String(word||'').toUpperCase().replace(/'/g,"''");
+  var pats = ['%'+w+'%'];
+  if(w.length >= 5 && w.length <= 14 && w.indexOf(' ') < 0){
+    for(var i=2; i<=w.length-2; i++) pats.push('%'+w.slice(0,i)+' '+w.slice(i)+'%');
+  }
+  return '(' + pats.map(function(p){ return field+" LIKE '"+p+"'"; }).join(' OR ') + ')';
+}
 function gisHouseWhere(cfg, hs, keyWords){
   var house=String(hs.house).replace(/'/g,"''");
-  if(cfg.numField){
-    var w=cfg.numField+" = '"+house+"'";
-    keyWords.slice(0,2).forEach(function(x){ w+=" AND "+cfg.streetField+" LIKE '%"+x+"%'"; });
-    return w;
-  }
-  var A=cfg.addr, w2=A+" LIKE '"+house+" %'";
-  keyWords.slice(0,2).forEach(function(x){ w2+=" AND "+A+" LIKE '%"+x+"%'"; });
-  return w2;
+  var F = cfg.numField ? cfg.streetField : cfg.addr;
+  var w = cfg.numField ? (cfg.numField+" = '"+house+"'") : (cfg.addr+" LIKE '"+house+" %'");
+  keyWords.slice(0,2).forEach(function(x){ w += " AND " + likeAny(F, x); });
+  return w;
 }
 function gisStreetWhere(cfg, words){
   var F = cfg.numField ? cfg.streetField : cfg.addr;
-  return words.map(function(x){ return F+" LIKE '%"+x+"%'"; }).join(' AND ');
+  return words.map(function(x){ return likeAny(F, x); }).join(' AND ');
 }
 
 /* ── ¿LA PERSONA AL TELÉFONO ES EL DUEÑO? ─────────────────────────────────────
