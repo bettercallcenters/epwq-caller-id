@@ -743,26 +743,26 @@ function showUpdateBanner(){
 }
 
 /* El banner solo sirve si alguien lo aprieta. Divine estuvo un MES en una versión de agosto
-   con la búsqueda de Nuevo México rota, porque nunca recargó. Ahora, si no hay nada que
-   perder, la página se actualiza sola; si hay llamada o datos escritos, espera y reintenta.
-   NUNCA recarga a media llamada ni encima de un formulario a medio llenar. */
+   con la búsqueda de Nuevo México rota, porque nunca recargó — y a Hector le pasó igual con
+   el sonido.
+
+   La primera versión de esto exigía el formulario VACÍO, y en un día de trabajo el teléfono
+   casi nunca está vacío: en la práctica no se actualizaba nunca. Ya no hace falta, porque
+   el borrador guarda TODO (teléfono, dirección, dueño, notas, día/hora, idioma, rol… y
+   ahora también el transcript) y restoreDraft lo regresa al cargar. Así que recargar entre
+   llamadas no cuesta nada.
+
+   Lo único intocable es estar EN llamada: ahí no se recarga ni aunque haya versión nueva. */
 function autoUpdateWhenSafe(){
   if(window.__autoUpdTimer) return;
-  function nothingToLose(){
-    try{
-      if(window.__callActive || (typeof callIsActive!=='undefined' && callIsActive)) return false;
-      var ids=['addr','owner','phone','phone2','notes','apptDate'];
-      for(var i=0;i<ids.length;i++){
-        var el=document.getElementById(ids[i]);
-        if(el && String(el.value||'').trim()) return false;      // el agente ya escribió algo
-      }
-      var tr=document.getElementById('trHUD');
-      if(tr && String(tr.innerText||'').trim().length>40) return false;   // hay transcript vivo
-      return true;
-    }catch(e){ return false; }
+  function onACall(){
+    try{ return !!(window.__callActive || (typeof callIsActive!=='undefined' && callIsActive)); }
+    catch(e){ return true; }     // si no se puede saber, NO recargar
   }
   window.__autoUpdTimer = setInterval(function(){
-    if(nothingToLose()) location.replace(location.pathname + '?v=' + Date.now());
+    if(onACall()) return;
+    try{ saveDraft(); }catch(e){}          // deja todo guardado antes de irse
+    location.replace(location.pathname + '?v=' + Date.now());
   }, 20000);
 }
 function checkForUpdate(){
@@ -2954,7 +2954,7 @@ window.addEventListener('message', function(e){
 var TEAM_URL = 'https://jcmbbkakqqdgtetjvhxu.supabase.co/rest/v1/agent_status';
 var TEAM_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImpjbWJia2FrcXFkZ3RldGp2aHh1Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE2MjA2NzUsImV4cCI6MjA5NzE5NjY3NX0.EF9Pv6XMCp6KSObcrzr4Y6zRHwzjihsqpKCXeT8Z3LM';
 var TEAM_STALE_MS = 45000;   // sin reportar > 45s → se considera offline (app cerrada)
-var myStatus = 'available', myPeer = '', teamAlerted = false, teamVoiceUnlocked = false;
+var myStatus = 'available', myPeer = '', teamAlerted = false;
 
 // Etiqueta de "con quién" está la llamada: nombre (caller ID) + número
 function peerLabel(from){
@@ -2982,16 +2982,10 @@ function teamAllBusyAlert(){
   var b = $('teamAlert');
   if(b){ b.style.display='block'; setTimeout(function(){ if(b) b.style.display='none'; }, 9000); }
   try{ toast('🚨 Everyone is on a call — please pick up'); }catch(_){}
-  // Si TÚ ya estás en llamada, el aviso se queda visual: la voz se le metería al cliente
-  // (y además el recado no aplica, porque ya estás contestando).
-  if(window.__callActive || (typeof callIsActive!=='undefined' && callIsActive)) return;
-  try{
-    if(window.speechSynthesis){
-      var u = new SpeechSynthesisUtterance('Todos están en llamada. Favor de contestar.');
-      u.lang='es-MX'; u.rate=1;
-      window.speechSynthesis.cancel(); window.speechSynthesis.speak(u);
-    }
-  }catch(_){}
+  /* Ya NO habla. Hector la pidió en su momento, pero la quitó después por la misma razón
+     que el timbre: cualquier cosa que salga por la bocina con el micrófono abierto afecta
+     el rendimiento de la llamada. El aviso se queda visual: la barra roja de "todos en
+     llamada" + el toast de arriba. */
 }
 
 function renderTeam(rows){
@@ -3179,11 +3173,7 @@ function pollTeam(){
   }catch(_){}
 }
 
-// Desbloquea la voz del navegador en el primer gesto del usuario (política de autoplay)
-document.addEventListener('click', function(){
-  if(teamVoiceUnlocked || !window.speechSynthesis) return;
-  try{ var u=new SpeechSynthesisUtterance(''); u.volume=0; window.speechSynthesis.speak(u); teamVoiceUnlocked=true; }catch(_){}
-}, { once:false });
+// (Se quitó el desbloqueo de la voz del navegador: la app ya no habla ni suena.)
 
 reportStatus('available');                 // reporta al abrir
 setInterval(function(){ reportStatus(); }, 20000);  // heartbeat: sigue "vivo"
@@ -3494,7 +3484,12 @@ function saveDraft(){
       from:  ($('timeFrom')||{}).value || '',
       to:    ($('timeTo')||{}).value || '',
       county: state.county, lang: state.lang, role: state.role,
-      water: state.water, hotLead: !!state.hotLead
+      water: state.water, hotLead: !!state.hotLead,
+      // El transcript también va al borrador: así recargar (p.ej. para tomar una versión
+      // nueva) ya no cuesta perder lo que se dijo en la llamada. Se corta a 40k para no
+      // reventar localStorage.
+      trHTML: (function(){ try{ var h=document.getElementById('trHUD'); return h ? String(h.innerHTML||'').slice(0,40000) : ''; }catch(e){ return ''; } })(),
+      trFull: (function(){ try{ var h=document.getElementById('trHUD'); return h ? String(h.dataset.full||'').slice(0,40000) : ''; }catch(e){ return ''; } })()
     }));
   }catch(e){}
 }
@@ -3512,6 +3507,10 @@ function restoreDraft(){
   if(d.date && $('apptDate')) $('apptDate').value = d.date;
   if(d.from && $('timeFrom')) $('timeFrom').value = d.from;
   if(d.to && $('timeTo')) $('timeTo').value = d.to;
+  if(d.trHTML || d.trFull){
+    var hud=$('trHUD');
+    if(hud){ if(d.trHTML) hud.innerHTML=d.trHTML; if(d.trFull) hud.dataset.full=d.trFull; }
+  }
   if(d.county) try{ setCounty(d.county); }catch(e){}
   if(d.lang){ state.lang=d.lang; segMark('langSeg','lang',d.lang); langManual=true; }
   if(d.role){ state.role=d.role; segMark('roleSeg','role',d.role); }
