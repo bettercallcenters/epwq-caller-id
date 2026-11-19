@@ -250,7 +250,6 @@
       <!-- Alert controls -->
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px">
         <button class="btn ghost sm" id="notifBtn">🔔 Alerts</button>
-        <button class="btn ghost sm" id="muteBtn">🔊 Sound: on</button>
         <button class="btn ghost sm" id="testAlert">▶︎ Test</button>
         <button class="btn ghost sm" id="crmCfg" title="Conectar esta tableta/teléfono con el CRM">🔗 CRM</button>
         <button class="btn ghost sm" id="crmInstall" title="Pone la clave de vuelta en la dirección para que el ícono de la pantalla de inicio la guarde">📲 Poner en pantalla de inicio</button>
@@ -2702,71 +2701,23 @@ try{ RC_CLIENT_ID = localStorage.getItem(RC_CLIENT_KEY) || ''; }catch(e){}
 /* ============================================================
    ALERTA DE LLAMADA ENTRANTE — 🔊 sonido + 🔔 notificación + parpadeo de pestaña
 ============================================================ */
-var soundOn=true, ac=null, ringOn=false, ringLoop=null, titleTimer=null, ORIG_TITLE=document.title;
-var acIdle=null;
+var titleTimer=null, ORIG_TITLE=document.title;
 
-/* El navegador exige un clic antes de reproducir audio → creamos el AudioContext en la 1ª
-   interacción para desbloquearlo, pero lo dejamos DORMIDO. Un AudioContext en estado
-   'running' mantiene encendida la salida de audio del sistema y la bocina sisea sin parar
-   aunque no se esté reproduciendo nada. Sólo lo despertamos cuando suena una llamada. */
-document.addEventListener('click', function(){
-  try{ ac = ac || new (window.AudioContext||window.webkitAudioContext)(); }catch(e){}
-  acSleep();
-});
+/* ── SIN TIMBRE NI BIPS ───────────────────────────────────────────────────────
+   La app YA NO reproduce ningún sonido por las bocinas. El timbre de dos tonos
+   (440/480 Hz) y el bip de "segunda llamada" se quitaron por completo — junto con
+   el AudioContext que los generaba y el botón de 🔊 Sound.
 
-// Duerme la salida de audio cuando no está sonando el timbre (con margen para el último beep)
-function acSleep(){
-  if(acIdle){ clearTimeout(acIdle); acIdle=null; }
-  acIdle = setTimeout(function(){
-    acIdle=null;
-    try{ if(ac && !ringOn && ac.state==='running') ac.suspend(); }catch(e){}
-  }, 1500);
-}
+   POR QUÉ: la computadora del agente tiene el micrófono abierto en la llamada, así
+   que todo lo que sale por la bocina se le mete al cliente. A Hector le entró una
+   llamada real y no podía ni hablar, porque además sonaba como si él estuviera
+   marcando. El softphone de RingCentral ya tiene su propio timbre; este era un
+   segundo timbre encimado y no aportaba nada.
 
-/* Timbre de telefono de verdad, no un pitido.
-   Antes era un solo tono de 880 Hz con corte seco: sonaba a alarma barata. Un telefono de
-   Estados Unidos timbra con DOS tonos juntos, 440 y 480 Hz; al sonar a la vez dan ese
-   "brrring" cálido que el oído reconoce. Se les mete un filtro suave para quitarles lo
-   metálico y una entrada/salida de 25 ms para que no truene al empezar ni al cortar. */
-function beep(t,dur,freq){
-  var o=ac.createOscillator(), g=ac.createGain();
-  o.type='sine'; o.frequency.value=freq; o.connect(g); g.connect(ac.destination);
-  g.gain.setValueAtTime(0.0001,t); g.gain.exponentialRampToValueAtTime(0.3,t+0.02);
-  g.gain.exponentialRampToValueAtTime(0.0001,t+dur); o.start(t); o.stop(t+dur+0.02);
-}
-function ringTone(t, dur){
-  var g=ac.createGain(), f=ac.createBiquadFilter();
-  f.type='lowpass'; f.frequency.value=1400; f.Q.value=0.7;
-  f.connect(g); g.connect(ac.destination);
-  [440, 480].forEach(function(hz){
-    var o=ac.createOscillator();
-    o.type='sine'; o.frequency.value=hz; o.connect(f);
-    o.start(t); o.stop(t+dur+0.05);
-  });
-  g.gain.setValueAtTime(0.0001, t);
-  g.gain.exponentialRampToValueAtTime(0.22, t+0.025);          // entra suave
-  g.gain.setValueAtTime(0.22, t+dur-0.04);
-  g.gain.exponentialRampToValueAtTime(0.0001, t+dur);          // y sale suave
-}
-function ringCycle(){
-  if(!ringOn || !ac) return;
-  var t=ac.currentTime;
-  ringTone(t, 0.9); ringTone(t+1.1, 0.9);     // "brrring … brrring"
-  ringLoop=setTimeout(ringCycle, 3400);        // y una pausa como la de un telefono
-}
-function ringStart(){
-  if(ringOn || !soundOn) return;
-  try{ ac = ac || new (window.AudioContext||window.webkitAudioContext)(); }catch(e){ return; }
-  if(acIdle){ clearTimeout(acIdle); acIdle=null; }
-  ringOn=true;
-  if(ac.state==='running'){ ringCycle(); return; }
-  try{ ac.resume().then(function(){ if(ringOn) ringCycle(); }).catch(function(){}); }catch(e){ ringOn=false; }
-}
-function ringStop(){
-  ringOn=false;
-  if(ringLoop){ clearTimeout(ringLoop); ringLoop=null; }
-  acSleep();   // vuelve a apagar la salida de audio
-}
+   El aviso de llamada sigue, pero SIN RUIDO: el título de la pestaña parpadea, sale
+   la barra de llamada entrante y la notificación del escritorio (silenciada).
+   La voz del HUD ("Todos están en llamada") se queda, pero ya no habla si estás en
+   llamada — ver teamAllBusyAlert(). */
 
 function titleFlashStart(num){
   titleFlashStop(); var on=false;
@@ -2777,13 +2728,15 @@ function titleFlashStop(){ if(titleTimer){ clearInterval(titleTimer); titleTimer
 function notifyIncoming(num){
   if(!('Notification' in window) || Notification.permission!=='granted') return;
   try{
-    var n=new Notification('📞 Incoming call', { body: num+' — answer in the EPWQ app', tag:'epwq-call', requireInteraction:true });
+    // silent:true → ni siquiera el "ding" del sistema operativo entra al micrófono
+    var n=new Notification('📞 Incoming call', { body: num+' — answer in the EPWQ app', tag:'epwq-call', requireInteraction:true, silent:true });
     n.onclick=function(){ window.focus(); n.close(); };
   }catch(e){}
 }
 
-function alertStart(num){ ringStart(); titleFlashStart(num); notifyIncoming(num); }
-function alertStop(){ ringStop(); titleFlashStop(); }
+// Aviso de llamada entrante: SOLO visual (pestaña parpadeando + notificación silenciosa)
+function alertStart(num){ titleFlashStart(num); notifyIncoming(num); }
+function alertStop(){ titleFlashStop(); }
 
 // Botón: activar notificaciones de escritorio (pide permiso al navegador)
 $('notifBtn').addEventListener('click', function(){
@@ -2795,13 +2748,6 @@ $('notifBtn').addEventListener('click', function(){
 });
 function notifDone(){ var b=$('notifBtn'); b.textContent='🔔 Alerts on ✔'; b.disabled=true; b.style.opacity=.7; }
 if(('Notification' in window) && Notification.permission==='granted'){ notifDone(); }
-
-// Botón: silenciar / activar el timbre de la app
-$('muteBtn').addEventListener('click', function(){
-  soundOn=!soundOn;
-  this.textContent = soundOn ? '🔊 Sound: on' : '🔇 Sound: off';
-  if(!soundOn) ringStop();
-});
 
 // Botón: probar la alerta (simula una llamada 5 seg)
 $('testAlert').addEventListener('click', function(){
@@ -3046,6 +2992,9 @@ function teamAllBusyAlert(){
   var b = $('teamAlert');
   if(b){ b.style.display='block'; setTimeout(function(){ if(b) b.style.display='none'; }, 9000); }
   try{ toast('🚨 Everyone is on a call — please pick up'); }catch(_){}
+  // Si TÚ ya estás en llamada, el aviso se queda visual: la voz se le metería al cliente
+  // (y además el recado no aplica, porque ya estás contestando).
+  if(window.__callActive || (typeof callIsActive!=='undefined' && callIsActive)) return;
   try{
     if(window.speechSynthesis){
       var u = new SpeechSynthesisUtterance('Todos están en llamada. Favor de contestar.');
@@ -3474,8 +3423,8 @@ var secondNoticeTimer = null;
 function secondCallNotice(ex){
   var num = (ex && (ex.phoneNumber || ex.extensionNumber)) || '';
   var who = ((ex && ex.name && !/^\+?\d[\d\s()+-]*$/.test(ex.name)) ? ex.name + ' · ' : '') + (num ? prettyPhone(num) : 'número oculto');
+  // Sin bip: esto salta ESTANDO en llamada, así que cualquier sonido se le mete al cliente.
   showGuardBar('📞 Another call coming in: ' + who + ' — your capture is protected, nothing gets erased.', false);
-  try{ if(ac){ var t=ac.currentTime; beep(t,0.15,660); } }catch(e){}   // un bip corto, sin timbre encima de la llamada
   clearTimeout(secondNoticeTimer); secondNoticeTimer = setTimeout(hideGuardBar, 45000);
 }
 
