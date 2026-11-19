@@ -172,7 +172,7 @@
     <h1>Call Identifier · EPWQ</h1>
     <div class="sub">Live owner ID · EPCAD / Doña Ana · USPhonebook · Auto appointment message</div>
   </div>
-  <div class="who"><span id="whoLine">&nbsp;</span><br><span id="rcStatus">Identificador: conectando…</span></div>
+  <div class="who"><span id="whoLine">&nbsp;</span><br><span id="rcStatus">Identificador: conectando…</span><br><span id="verLine" style="opacity:.75;font-size:11px"></span></div>
 </header>
 
 <!-- Alerta: bot de WhatsApp desconectado (necesita re-escaneo) -->
@@ -765,6 +765,14 @@ function autoUpdateWhenSafe(){
     location.replace(location.pathname + '?v=' + Date.now());
   }, 20000);
 }
+/* La versión, a la vista. Si una ventana vieja se quedó abierta (y esas SÍ tenían timbre),
+   no había forma de saberlo de un vistazo: se ve igualita. Ahora cada ventana dice qué
+   versión trae, y si dos no coinciden, la que no diga la nueva es la que hay que cerrar. */
+(function showVersion(){
+  var el=document.getElementById('verLine');
+  if(el) el.textContent = 'v ' + APP_VERSION;
+})();
+
 function checkForUpdate(){
   fetch(location.pathname + '?_=' + Date.now(), { cache:'no-store' })
     .then(function(r){ return r.text(); })
@@ -2694,8 +2702,34 @@ try{ RC_CLIENT_ID = localStorage.getItem(RC_CLIENT_KEY) || ''; }catch(e){}
   ifr.allow = 'autoplay; microphone';
   ifr.style.cssText = 'width:100%;height:100%;border:0;border-radius:12px;display:block';
   ifr.src = base + '?' + params;
+  ifr.onload = rcMuteRingtoneLoop;        // en cuanto cargue, callarle el timbre
   mount.appendChild(ifr);
+  rcMuteRingtoneLoop();
 })();
+
+/* ── CALLARLE EL TIMBRE AL SOFTPHONE EMBEBIDO ────────────────────────────────
+   El iframe de RingCentral trae SU PROPIO timbre, y a Hector ya le timbra la app de
+   RingCentral de escritorio. Dos timbres encimados y desfasados se oyen como si alguien
+   estuviera marcando — y con el micrófono abierto se le van al cliente.
+   `rc-adapter-update-ringtone` con volume:0 baja SOLO el volumen del timbre; el audio de
+   la llamada no se toca, se sigue oyendo y hablando igual.
+   Se reintenta porque el widget tarda en arrancar y vuelve a inicializarse al loguearse,
+   y ahí se le olvida el ajuste. */
+function rcMuteRingtone(){
+  var f = document.querySelector('#rc-widget-adapter-frame');
+  if(!f || !f.contentWindow) return false;
+  try{ f.contentWindow.postMessage({ type:'rc-adapter-update-ringtone', volume:0 }, '*'); return true; }
+  catch(e){ return false; }
+}
+function rcMuteRingtoneLoop(){
+  try{ clearInterval(window.__rcMuteT); }catch(e){}
+  var n = 0;
+  rcMuteRingtone();
+  window.__rcMuteT = setInterval(function(){
+    rcMuteRingtone();
+    if(++n > 30){ try{ clearInterval(window.__rcMuteT); }catch(e){} }   // ~60 s y para
+  }, 2000);
+}
 
 /* ============================================================
    ALERTA DE LLAMADA ENTRANTE — 🔊 sonido + 🔔 notificación + parpadeo de pestaña
@@ -2858,6 +2892,10 @@ function maybeResetForCall(key){
 
 window.addEventListener('message', function(e){
   var d = e.data; if(!d || !d.type) return;
+
+  // Re-insiste en callar el timbre del softphone: al loguearse y en cada evento de llamada,
+  // que es cuando el widget se reinicializa y se le olvida el volumen 0.
+  if(d.type === 'rc-login-status-notify' || RC_CALL_EVENTS.indexOf(d.type) >= 0) rcMuteRingtone();
 
   // Login / estado
   if(d.type === 'rc-login-status-notify'){
