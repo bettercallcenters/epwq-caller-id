@@ -249,7 +249,6 @@
 
       <!-- Alert controls -->
       <div style="display:flex;gap:6px;flex-wrap:wrap;margin:0 0 10px">
-        <button class="btn ghost sm" id="notifBtn">🔔 Alerts</button>
         <button class="btn ghost sm" id="testAlert">▶︎ Test</button>
         <button class="btn ghost sm" id="crmCfg" title="Conectar esta tableta/teléfono con el CRM">🔗 CRM</button>
         <button class="btn ghost sm" id="crmInstall" title="Pone la clave de vuelta en la dirección para que el ícono de la pantalla de inicio la guarde">📲 Poner en pantalla de inicio</button>
@@ -2725,29 +2724,20 @@ function titleFlashStart(num){
 }
 function titleFlashStop(){ if(titleTimer){ clearInterval(titleTimer); titleTimer=null; } document.title=ORIG_TITLE; }
 
-function notifyIncoming(num){
-  if(!('Notification' in window) || Notification.permission!=='granted') return;
-  try{
-    // silent:true → ni siquiera el "ding" del sistema operativo entra al micrófono
-    var n=new Notification('📞 Incoming call', { body: num+' — answer in the EPWQ app', tag:'epwq-call', requireInteraction:true, silent:true });
-    n.onclick=function(){ window.focus(); n.close(); };
-  }catch(e){}
-}
+/* NI NOTIFICACIÓN DE ESCRITORIO.
+   Era la ÚLTIMA fuente de sonido que quedaba. En macOS, Chrome no toca el sonido él mismo:
+   le entrega la notificación al Centro de Notificaciones del sistema, y ÉSE toca el sonido
+   de alerta del sistema ignorando el `silent:true` de la API web. Por eso, después de haber
+   quitado el timbre y los bips, Hector seguía oyendo "el sistema" encima de la llamada.
+   El aviso se queda 100% visual: la pestaña parpadea con el número y sale la barra verde
+   de INCOMING CALL dentro de la app. */
 
-// Aviso de llamada entrante: SOLO visual (pestaña parpadeando + notificación silenciosa)
-function alertStart(num){ titleFlashStart(num); notifyIncoming(num); }
+// Aviso de llamada entrante: SOLO visual, sin un solo sonido
+function alertStart(num){ titleFlashStart(num); }
 function alertStop(){ titleFlashStop(); }
 
-// Botón: activar notificaciones de escritorio (pide permiso al navegador)
-$('notifBtn').addEventListener('click', function(){
-  if(!('Notification' in window)){ toast('This browser does not support notifications'); return; }
-  Notification.requestPermission().then(function(p){
-    if(p==='granted'){ notifDone(); toast('Desktop alerts enabled ✔'); }
-    else { toast('The browser did not grant notification permission'); }
-  });
-});
-function notifDone(){ var b=$('notifBtn'); b.textContent='🔔 Alerts on ✔'; b.disabled=true; b.style.opacity=.7; }
-if(('Notification' in window) && Notification.permission==='granted'){ notifDone(); }
+// (El botón de 🔔 Alerts se quitó junto con las notificaciones de escritorio: en macOS
+//  eran las que tocaban el sonido del sistema encima de la llamada.)
 
 // Botón: probar la alerta (simula una llamada 5 seg)
 $('testAlert').addEventListener('click', function(){
