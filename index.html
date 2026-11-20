@@ -3331,6 +3331,48 @@ var AREACODE = {
 };
 function areaLoc(num){ var d=digits(num); if(d.length!==10) return ''; return AREACODE[d.slice(0,3)] || ''; }
 
+// ── ¿Nos está DEVOLVIENDO la llamada? ───────────────────────────────────────────────────
+//
+// Hector: "muchas veces no sabemos quién está marcando... necesito que sepan exactamente
+// quién marca de vuelta". Son tres o cuatro al día: gente a la que nosotros le marcamos y
+// nos regresa la llamada. Hoy entran como desconocidas, quien contesta pregunta desde cero
+// y el cliente lo nota — acaba de hablar con nosotros hace veinte minutos.
+//
+// Se pide UNA vez por número y no bloquea nada: si el CRM no contesta, la llamada entra
+// igual. Saber esto es una ventaja, no un requisito para poder trabajar.
+var lastCallbackNum = '';
+function pintarDevolucion(num){
+  var d = digits(num); if(d.length !== 10 || d === lastCallbackNum) return;
+  lastCallbackNum = d;
+  var tok = crmToken(); if(!tok) return;
+  fetch(CRM_BASE + '/api/rc/callback-context?phone=' + d, { headers:{ 'Authorization':'Bearer ' + tok } })
+    .then(function(r){ return r.ok ? r.json() : null; })
+    .then(function(j){
+      var v = j && j.devolucion; if(!v || !v.quien) return;
+      // Sigue siendo la misma llamada? Si ya entró otra, no se pisa.
+      var enPantalla = $('incNum') ? digits($('incNum').textContent) : '';
+      if(enPantalla && enPantalla !== d) return;
+      var min = Number(v.hace_min || 0);
+      var cuando = min < 60 ? (min + ' min') : (Math.round(min/60) + ' h');
+      var quePaso = ({ conversacion:'habló con', conecto:'le dejó buzón', timbro:'le timbró',
+                       colgada:'le marcó', sistema:'intentó' })[v.resultado] || 'le marcó';
+      var ban = $('devolucionBanner');
+      if(!ban){
+        ban = document.createElement('div');
+        ban.id = 'devolucionBanner';
+        ban.style.cssText = 'margin:6px 0 0;padding:8px 11px;border-radius:9px;background:#fef3c7;'
+          + 'border:1px solid #fcd34d;color:#78350f;font-size:13px;font-weight:700;line-height:1.45';
+        var box = $('incoming'); if(box && box.parentNode) box.parentNode.insertBefore(ban, box.nextSibling);
+      }
+      ban.innerHTML = '🔁 <b>Te está devolviendo la llamada.</b><br>'
+        + '<b>' + v.quien + '</b> ' + quePaso + ' hace <b>' + cuando + '</b>'
+        + (Number(v.intentos) > 1 ? ' · ' + v.intentos + ' intentos' : '');
+      ban.style.display = 'block';
+    })
+    .catch(function(){});
+}
+function limpiarDevolucion(){ var b = $('devolucionBanner'); if(b) b.style.display = 'none'; lastCallbackNum = ''; }
+
 function onIncoming(num, answered, from){
   from = from || {};
   var pretty = prettyPhone(num) || 'Hidden number';
@@ -3349,6 +3391,9 @@ function onIncoming(num, answered, from){
 
   // AUTO: ¿el que esta marcando ya tiene cita? Si si, el panel se abre solo.
   if(num) try{ citasPorTelefono(num); }catch(e){}
+
+  // AUTO: ¿nos esta devolviendo la llamada? Quien le marco antes, y hace cuanto.
+  if(num) try{ pintarDevolucion(num); }catch(e){}
 
   // AUTO: busca la info del cliente en el bot (una vez por número) y la muestra dentro de la app
   if(num){ var dnum=digits(num); if(dnum.length===10 && dnum!==lastLookedUp && callerLookupUrl()){ lastLookedUp=dnum; lookupCaller(num); } }
@@ -3379,6 +3424,7 @@ function callEnded(){
   window.__activeIdent = null;   // ya no hay llamada activa que proteger
   window.__secondIds = {};       // olvida las segundas llamadas ignoradas
   var box = $('incoming'); box.classList.remove('live');
+  try{ limpiarDevolucion(); }catch(e){}
   box.querySelector('.lbl').textContent = 'Waiting for call';
   $('incNum').textContent = '— — —';
   $('incMeta').textContent = '';
