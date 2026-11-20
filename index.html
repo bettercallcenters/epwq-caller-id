@@ -9,6 +9,28 @@
 <title>EPWQ · Identificador de Llamadas</title>
 <link rel="icon" type="image/png" href="logo.png" />
 <link rel="apple-touch-icon" href="logo.png" />
+
+<!-- ── Que el icono abra COMO APP, no dentro de Safari ─────────────────────────────────────
+     Sin estas etiquetas, "Agregar a pantalla de inicio" crea un atajo que abre en el
+     navegador — con barra de direcciones y todo.
+     Y eso tiene una consecuencia cara: Safari BORRA los datos guardados de un sitio a los 7
+     dias cuando no esta instalado como app. Se lleva la llave del CRM, y a la semana
+     siguiente la pantalla pide otra vez el link que ya se habia usado.
+     El codigo ya sabia que esto pasaba —hay un comentario del 2026-11-08 de alguien que se
+     fue media hora averiguandolo— pero se trato el sintoma (no borrar la llave de la
+     direccion) en lugar de la causa. Esta es la causa.
+     Instalada de verdad, iOS le da su propio almacenamiento y deja de purgarlo.
+
+     OJO con start_url: dice "." y no "/". Con "/" el icono abriria la raiz del dominio y
+     tiraria la llave, que viaja en el hash (#t=...&a=...). Seria el mismo problema otra vez
+     por la puerta de atras — y aqui vive bajo /epwq-caller-id/, asi que "/" ni siquiera cae
+     en la app. -->
+<link rel="manifest" href="manifest.webmanifest" />
+<meta name="theme-color" content="#0f172a" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+<meta name="apple-mobile-web-app-title" content="Call ID" />
 <style>
   :root{
     --bg:#0f172a; --panel:#ffffff; --ink:#0f172a; --muted:#64748b;
@@ -3182,6 +3204,22 @@ var rcPresenciaViva = false, rcIntentos = 0;
 // ?Este equipo YA habia estado conectado? Si quedo la huella pero ya no hay clave, no es
 // que nunca se conectara: el telefono la borro. Son dos problemas distintos y se arreglan
 // distinto — uno pide el link, el otro pide cambiar un ajuste de Safari.
+// ¿Esta corriendo como APP instalada, o dentro del navegador?
+//
+// Es la pregunta que de verdad importa cuando la clave desaparece. Safari BORRA los datos
+// guardados de un sitio a los 7 dias si NO esta instalado como app — y se lleva tambien la
+// huella `epwq_conectado_el`, asi que ni siquiera queda rastro de que ya se habia conectado.
+// Los dos casos terminan viendose igual: "nunca te has conectado aqui", cuando la verdad es
+// "te conectaste y tu telefono lo tiro".
+//
+// Esto no depende de nada guardado: se lo preguntamos al navegador en el momento.
+function corriendoComoApp(){
+  try {
+    return (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches)
+        || window.navigator.standalone === true;
+  } catch(_){ return false; }
+}
+
 function seConectoAntes(){
   try { return !!localStorage.getItem('epwq_conectado_el'); } catch(_){ return false; }
 }
@@ -3194,9 +3232,17 @@ function rcEstadoSinSoftphone(){
   // red o del servidor. No lo era: el equipo no tenia la clave del CRM, y sin clave esta
   // pantalla no puede preguntar quien esta llamando. El mensaje no distinguia los dos casos,
   // asi que se fueron horas buscando del lado equivocado.
-  if (!crmToken()) return seConectoAntes()
-    ? '⚠️ Tu teléfono borró la clave — vuelve a pegar tu link'
-    : '⚠️ Falta conectar el CRM — abre tu link o toca Conectar';
+  if (!crmToken()) {
+    // Sin la clave, lo primero es saber POR QUE. Si esto corre en el navegador y no como app
+    // instalada, esa es la causa casi siempre: Safari la borro a los 7 dias. Decirle "pega tu
+    // link otra vez" sin mas lo manda a repetir el mismo paso cada semana.
+    if (!corriendoComoApp()) {
+      return '⚠️ Abierto en el navegador — guárdalo como app o se borra cada semana';
+    }
+    return seConectoAntes()
+      ? '⚠️ Tu teléfono borró la clave — vuelve a pegar tu link'
+      : '⚠️ Falta conectar el CRM — abre tu link o toca Conectar';
+  }
   return rcIntentos > 2 ? '⚠️ No se pudo contactar el servidor — reintentando' : 'Identificador: conectando…';
 }
 function rcPintarEstado(){
