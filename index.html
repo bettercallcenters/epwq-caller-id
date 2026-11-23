@@ -2345,27 +2345,84 @@ function linkDeConexion(){
   return location.origin + location.pathname + '#t=' + encodeURIComponent(tok)
        + (ag ? '&a=' + encodeURIComponent(ag) : '');
 }
+/* Chrome y Edge (en computadora y en Android) avisan antes de que se pueda instalar y
+   dejan hacerlo de un clic. Se guarda ese aviso para usarlo cuando el agente toque el
+   botón: un clic de verdad vale más que tres pasos escritos, que además cambian de nombre
+   con cada versión del navegador. */
+var promptInstalar = null;
+window.addEventListener('beforeinstallprompt', function(e){ e.preventDefault(); promptInstalar = e; });
+window.addEventListener('appinstalled', function(){ promptInstalar = null; });
+
+/* Pasos de instalación SEGÚN EL APARATO.
+   Antes siempre enseñaba los de iPhone ("Compartir → Añadir a pantalla de inicio"). Treasure
+   trabaja en una laptop con Windows, donde eso no existe: leyó pasos que no estaban en su
+   pantalla, acabó guardándola por el menú del navegador, y el ícono nació sin clave. */
+function pasosInstalar(){
+  var ua = navigator.userAgent || '';
+  // iPadOS se reporta como Macintosh; lo que lo delata es que tiene pantalla táctil.
+  var iOS = /iPad|iPhone|iPod/.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+  if (iOS) return { como:'iphone', texto:
+    '1. Toca el botón de Compartir (el cuadrito con la flecha)\n' +
+    '2. Baja y elige "Añadir a pantalla de inicio"\n' +
+    '3. Dale Añadir' };
+  if (/Android/.test(ua)) return { como:'android', texto:
+    '1. Toca los tres puntos ⋮ de arriba a la derecha\n' +
+    '2. Elige "Instalar aplicación" (o "Añadir a pantalla principal")\n' +
+    '3. Dale Instalar' };
+  if (/Edg\//.test(ua)) return { como:'edge', texto:
+    '1. Haz clic en los tres puntos ⋯ de arriba a la derecha\n' +
+    '2. Entra a "Aplicaciones"\n' +
+    '3. Elige "Instalar este sitio como una aplicación"' };
+  if (/Chrome\//.test(ua)) return { como:'chrome', texto:
+    '1. Al final de la barra de direcciones busca el ícono de instalar (una pantallita con una flecha)\n' +
+    '2. Si no está, haz clic en los tres puntos ⋮ → "Transmitir, guardar y compartir" → "Instalar página como aplicación"\n' +
+    '3. Dale Instalar' };
+  if (/Safari/.test(ua)) return { como:'safari-mac', texto:
+    '1. Arriba, entra al menú Archivo\n' +
+    '2. Elige "Añadir al Dock"\n' +
+    '3. Dale Añadir' };
+  return { como:'otro', texto:
+    'Busca en el menú de tu navegador la opción "Instalar" o "Añadir a pantalla de inicio".' };
+}
+
 /* Instalar como app SIN perder la clave.
    Hector, 2026-11-08: "si sirve cuando aprieto el link, pero cuando le pongo share → add to
    home screen y lo abro como app, ya no sirve".
    El motivo: el icono guarda la direccion que hay EN ESE MOMENTO, y para entonces la app ya
    le borro la clave del # (se quita a proposito para que no quede en el historial). El icono
    nacia sin clave. Y en iOS una app de pantalla de inicio ademas guarda sus datos aparte de
-   Safari, asi que tampoco hereda la que ya estaba guardada.
-   Esto devuelve la clave a la barra de direcciones justo antes de instalar. */
+   Safari, asi que tampoco hereda la que ya estaba guardada. */
 function instalarEnPantalla(){
   var link = linkDeConexion();
   if (!link){
     toast('Primero conecta este equipo (toca 🔗 CRM o pega tu link).');
     return;
   }
+
+  /* Instalación de verdad, de un clic. Aquí NO se toca la barra de direcciones: una app
+     instalada así arranca en el start_url del manifest, no en la dirección que estaba
+     puesta, así que devolver la clave ahí no serviría de nada — y de paso la deja a la
+     vista en una pantalla que otros ven. Los datos guardados sí los hereda, porque es el
+     mismo navegador y el mismo sitio. */
+  if (promptInstalar){
+    var pi = promptInstalar; promptInstalar = null;
+    try {
+      pi.prompt();
+      pi.userChoice.then(function(r){
+        toast(r && r.outcome === 'accepted' ? '📲 Instalada — ábrela desde el ícono' : 'Instalación cancelada');
+      }).catch(function(){});
+      return;
+    } catch(_){ /* si el navegador no dejó, se sigue con las instrucciones */ }
+  }
+
+  /* Sin instalación de un clic hay que guiarlo a mano, y aquí SÍ se devuelve la clave a la
+     dirección: en iPhone el ícono guarda la dirección tal como está en ese momento. */
   try { history.replaceState(null, '', link.slice(link.indexOf('#'))); } catch(_){}
-  alert('📲 Para dejarlo como app en tu teléfono:\n\n' +
-        '1. Toca el botón de Compartir (el cuadrito con la flecha)\n' +
-        '2. Elige "Añadir a pantalla de inicio"\n' +
-        '3. Dale Añadir\n\n' +
-        'Ya puse tu clave de vuelta en la dirección para que el ícono la guarde. ' +
-        'Si lo instalas sin esto, el ícono abre sin clave y hay que volver a conectarlo.');
+  var p = pasosInstalar();
+  var nota = (p.como === 'iphone')
+    ? 'Ya puse tu clave de vuelta en la dirección para que el ícono la guarde. Si la guardas desde el menú del navegador en lugar de aquí, el ícono abre sin clave y hay que conectarlo otra vez.'
+    : 'Tu clave queda guardada en este navegador, así que la aplicación debe abrir ya conectada. Si te pide el link, pégalo una vez ahí y listo.';
+  alert('📲 Para dejarlo como aplicación:\n\n' + p.texto + '\n\n' + nota);
 }
 
 function copiarLinkConexion(){
