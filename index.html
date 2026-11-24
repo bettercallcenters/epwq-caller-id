@@ -1533,9 +1533,23 @@ function fetchCountyOwner(hs){
     var q = CRM_BASE+'/api/parcel?county='+encodeURIComponent(key)
           + '&house='+encodeURIComponent(hs.house)+'&street='+encodeURIComponent(hs.street);
     return withTimeout(q, CRM_PARCEL_TIMEOUT_MS, { headers:{ 'Authorization':'Bearer '+tok } })
-      .then(function(r){ if(!r.ok) throw new Error('crm '+r.status); return r.json(); })
+      .then(function(r){
+        /* 401/403 = la clave de ESTE equipo no sirve. Es muy distinto a que el condado se
+           caiga, y hasta ahora se veía exactamente igual: la petición moría en el catch de
+           abajo, se le preguntaba al condado desde el navegador —que a Doña Ana no le saca
+           nada— y al agente le salía "el condado no contestó". Le picaba a "Try again" sin
+           fin cuando lo que había que hacer era volver a pegar su link.
+           Pasó el 24/11: la clave estaba puesta pero no servía, así que el aviso de "equipo
+           no conectado" tampoco salía — se veía conectada y aun así nada funcionaba. */
+        // La marca va a nivel de app, no en el resultado: el aviso que ve el agente lo arma
+        // la consulta de la CALLE, que va directo al condado y nunca pasa por aquí.
+        if(r.status===401 || r.status===403){ window.__crmClaveMala = true; var er=new Error('crm '+r.status); er.claveMala=true; throw er; }
+        if(!r.ok) throw new Error('crm '+r.status);
+        return r.json();
+      })
       .then(function(j){
         if(!j || !j.ok) throw new Error('crm body');
+        window.__crmClaveMala = false;        // contestó → la clave sirve
         // El CRM consulta la capa VIEJA de El Paso: si no trae nada, puede ser una casa
         // nueva que solo está en la capa de EPCAD → pregunta directo al condado.
         if(!j.features || !j.features.length) return fromCounty();
@@ -1546,7 +1560,7 @@ function fetchCountyOwner(hs){
         // preguntarle al condado. Si en cambio se AGOTÓ el tiempo, es que el condado va
         // lento; preguntarle directo tardaría todavía más, así que no se reintenta.
         if(e && e.name==='AbortError') return { key:key, cfg:cfg, feats:[], failed:true };
-        return fromCounty();
+        return fromCounty();   // se intenta el condado igual; si tampoco puede, el aviso ya sabe de la clave
       });
   }
 
@@ -1674,13 +1688,21 @@ function streetFallback(hs){
          Antes aquí solo estaba "Try again", que en un equipo sin conectar no va a jalar nunca:
          el agente se queda picándole en círculos con el cliente en la línea. */
       var sinClave = (typeof crmToken==='function') && !crmToken();
+      // Clave puesta PERO rechazada por el CRM. Sin esto se veía igual que un condado caído,
+      // y el agente no tenía forma de saber que lo que fallaba era su link.
+      var claveMala = !sinClave && !!window.__crmClaveMala;
+      var hayQuePegar = sinClave || claveMala;
       warn = '<div style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;border-radius:9px;padding:9px 11px;font-size:13.5px;font-weight:700;margin-bottom:8px">'
-           + (sinClave
-               ? '⚠️ <b>Este equipo no está conectado</b> — por eso no se pudo leer el padrón de '+countyLabel(mine)+'.'
-               : '⚠️ <b>'+countyLabel(mine)+' county records did not answer</b> from this computer.')
+           + (claveMala
+               ? '⚠️ <b>Tu link ya no sirve</b> — por eso no se pudo leer el padrón de '+countyLabel(mine)+'.'
+               : sinClave
+                 ? '⚠️ <b>Este equipo no está conectado</b> — por eso no se pudo leer el padrón de '+countyLabel(mine)+'.'
+                 : '⚠️ <b>'+countyLabel(mine)+' county records did not answer</b> from this computer.')
            + (rows.length ? ' Lo de abajo es de '+countyLabel(other)+' — <b>no</b> es el condado donde estás trabajando.' : '')
-           + (sinClave
-               ? '<div style="font-weight:600;margin-top:5px">Pega tu link y el dueño sale solo.</div>'
+           + (hayQuePegar
+               ? '<div style="font-weight:600;margin-top:5px">'
+                 + (claveMala ? 'Pídele a Hector tu link nuevo y pégalo aquí.' : 'Pega tu link y el dueño sale solo.')
+                 + '</div>'
                  + '<button class="btn sm" data-act="conectar" style="margin-top:6px;background:#dc2626;color:#fff;border-color:#dc2626;font-weight:800">📋 Pegar mi link</button>'
                : ' <button class="btn ghost sm" data-act="retry" style="margin-top:6px">↻ Try again</button>')
            + '</div>';
