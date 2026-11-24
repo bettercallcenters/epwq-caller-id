@@ -1370,6 +1370,17 @@ if($('ownerGis')) $('ownerGis').addEventListener('click', function(e){
   try{ for(var k in ownerCache) delete ownerCache[k]; }catch(_){}
   searchOwner();
 });
+/* Delegado: "📋 Pegar mi link" desde el aviso de condado caído. Al conectar, la búsqueda
+   pasa a hacerse por el CRM, así que se repite sola — el agente no tiene que volver a
+   teclear la dirección con el cliente esperando. */
+if($('ownerGis')) $('ownerGis').addEventListener('click', function(e){
+  if(!e.target.closest('[data-act="conectar"]')) return;
+  pedirCrmToken();
+  if(typeof crmToken==='function' && crmToken()){
+    try{ for(var k in ownerCache) delete ownerCache[k]; }catch(_){}
+    searchOwner();
+  }
+});
 
 // Busca el dueño en AMBOS condados (El Paso + Doña Ana) a la vez, con match FLEXIBLE, y usa el que encuentre.
 // Así ya no importa qué condado esté seleccionado: una dir de NM (Anthony/Santa Teresa/Las Cruces/Sunland Park)
@@ -1655,10 +1666,24 @@ function streetFallback(hs){
     var countyLabel = function(k){ return k==='dona' ? 'Doña Ana (NM)' : 'El Paso (TX)'; };
     var warn = '';
     if(myRes.failed){
+      /* Casi siempre esto NO es que el condado esté caído: es que ESTE equipo no está
+         conectado. Sin clave la búsqueda ni siquiera pasa por el CRM (ver crmOrCounty) y el
+         navegador le pregunta al condado directo — y a Doña Ana un navegador no le saca nada,
+         aunque el servidor sí. La prueba: el 23-nov el CRM trajo 25 dueños de Doña Ana sin
+         problema, mientras en los equipos sin conectar salía justo este aviso.
+         Antes aquí solo estaba "Try again", que en un equipo sin conectar no va a jalar nunca:
+         el agente se queda picándole en círculos con el cliente en la línea. */
+      var sinClave = (typeof crmToken==='function') && !crmToken();
       warn = '<div style="background:#fef2f2;border:1px solid #fca5a5;color:#991b1b;border-radius:9px;padding:9px 11px;font-size:13.5px;font-weight:700;margin-bottom:8px">'
-           + '⚠️ <b>'+countyLabel(mine)+' county records did not answer</b> from this computer.'
-           + (rows.length ? ' Anything listed below is from '+countyLabel(other)+' — <b>not</b> the county you are working.' : '')
-           + ' <button class="btn ghost sm" data-act="retry" style="margin-top:6px">↻ Try again</button></div>';
+           + (sinClave
+               ? '⚠️ <b>Este equipo no está conectado</b> — por eso no se pudo leer el padrón de '+countyLabel(mine)+'.'
+               : '⚠️ <b>'+countyLabel(mine)+' county records did not answer</b> from this computer.')
+           + (rows.length ? ' Lo de abajo es de '+countyLabel(other)+' — <b>no</b> es el condado donde estás trabajando.' : '')
+           + (sinClave
+               ? '<div style="font-weight:600;margin-top:5px">Pega tu link y el dueño sale solo.</div>'
+                 + '<button class="btn sm" data-act="conectar" style="margin-top:6px;background:#dc2626;color:#fff;border-color:#dc2626;font-weight:800">📋 Pegar mi link</button>'
+               : ' <button class="btn ghost sm" data-act="retry" style="margin-top:6px">↻ Try again</button>')
+           + '</div>';
     } else if(rows.length && !myRows){
       warn = '<div style="background:#fffbeb;border:1px solid #f59e0b;color:#92400e;border-radius:9px;padding:9px 11px;font-size:13.5px;font-weight:700;margin-bottom:8px">'
            + '⚠️ No house on this street exists in <b>'+countyLabel(mine)+'</b>. Everything below is from <b>'+countyLabel(other)+'</b> — confirm the city with the customer.</div>';
